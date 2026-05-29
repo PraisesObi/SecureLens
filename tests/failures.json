@@ -1,0 +1,17 @@
+{
+  "count": 1,
+  "cases": [
+    {
+      "true_label": "MALICIOUS",
+      "predicted_label": "NORMAL",
+      "failure_type": "false_negative",
+      "proba_malicious": 0.335,
+      "department": "Project Management",
+      "position": "Project Manager",
+      "is_contractor": 0,
+      "is_abroad": 0,
+      "late_exit_flag": 0,
+      "total_files_burned": 20
+    }
+  ]
+}

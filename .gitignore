@@ -1,0 +1,32 @@
+# Database & sensitive data
+*.db
+*.sqlite
+*.sqlite3
+securelens.json
+
+# Model files (large binaries)
+*.joblib
+model/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.pytest_cache/
+
+# Logs & processed files
+watched/processed/
+watched/failed/
+logs/
+*.log
+
+# Environment
+.env
+.venv/
+venv/
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,4822 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>SecureLens · Insider Threat Detection</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<style>
+:root {
+  --bg-base:     #0a0e1a;
+  --bg-deep:     #060912;
+  --panel:       rgba(20, 28, 46, 0.55);
+  --panel-solid: rgba(20, 28, 46, 0.9);
+  --panel-hover: rgba(28, 38, 60, 0.7);
+  --border:      rgba(80, 120, 180, 0.18);
+  --border2:     rgba(110, 160, 220, 0.32);
+  --red:         #f43f5e;
+  --red-dim:     rgba(244,63,94,0.14);
+  --red-glow:    rgba(244,63,94,0.4);
+  --green:       #10b981;
+  --green-dim:   rgba(16,185,129,0.14);
+  --amber:       #f59e0b;
+  --amber-dim:   rgba(245,158,11,0.14);
+  --blue:        #3b9eff;
+  --blue-2:      #1e88f5;
+  --blue-dim:    rgba(59,158,255,0.14);
+  --blue-glow:   rgba(59,158,255,0.45);
+  --purple:      #8b5cf6;
+  --purple-dim:  rgba(139,92,246,0.14);
+  --cyan:        #06b6d4;
+  --text:        #94a3b8;
+  --text2:       #cbd5e1;
+  --bright:      #f1f5f9;
+  --muted:       #475569;
+  --font:         'Onest', 'Inter', sans-serif;
+  --font-display: 'Onest', 'Inter', sans-serif;
+  --font-mono:    'JetBrains Mono', monospace;
+
+  /* Panel gradients. Used everywhere a panel needs that blue glow. */
+  --panel-grad:        linear-gradient(135deg,
+                         rgba(59, 158, 255, 0.10) 0%,
+                         rgba(28, 42, 70, 0.55) 35%,
+                         rgba(15, 22, 38, 0.75) 100%);
+  --panel-grad-hover:  linear-gradient(135deg,
+                         rgba(59, 158, 255, 0.18) 0%,
+                         rgba(34, 52, 86, 0.65) 35%,
+                         rgba(18, 28, 46, 0.80) 100%);
+  --panel-grad-strong: linear-gradient(140deg,
+                         rgba(59, 158, 255, 0.16) 0%,
+                         rgba(30, 50, 90, 0.70) 30%,
+                         rgba(8, 14, 28, 0.85) 100%);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  background: var(--bg-base);
+  color: var(--text2);
+  font-family: var(--font);
+  min-height: 100vh;
+  overflow-x: hidden;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(110,160,220,0.25); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(110,160,220,0.45); }
+
+i[data-lucide] { width: 16px; height: 16px; stroke-width: 1.8; }
+
+/* ============================================================
+   TUNNEL BACKGROUND CANVAS
+   ============================================================ */
+#tunnel-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background: radial-gradient(ellipse at center, #0a1428 0%, #050810 70%, #000 100%);
+}
+.tunnel-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  background:
+    radial-gradient(ellipse at top left, rgba(59,158,255,0.10), transparent 60%),
+    radial-gradient(ellipse at bottom right, rgba(139,92,246,0.08), transparent 60%),
+    linear-gradient(180deg, rgba(5,8,16,0.4), rgba(5,8,16,0.55));
+  pointer-events: none;
+}
+
+/* ============================================================
+   SPLASH SCREEN
+   ============================================================ */
+#splash {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at center, #0a1428 0%, #03060c 70%, #000 100%);
+  transition: opacity 0.6s ease, visibility 0.6s ease;
+}
+#splash.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+
+.splash-bg-art {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.45;
+  mask-image: radial-gradient(circle at center, black 0%, black 30%, transparent 75%);
+  -webkit-mask-image: radial-gradient(circle at center, black 0%, black 30%, transparent 75%);
+}
+.splash-bg-art svg { width: 100%; height: 100%; display: block; }
+
+.splash-stage {
+  position: relative;
+  width: 280px;
+  height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.splash-shield {
+  position: absolute;
+  width: 160px;
+  height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(0 0 30px rgba(59,158,255,0.25));
+  animation: shieldPulse 2.4s ease-in-out infinite;
+}
+@keyframes shieldPulse {
+  0%, 100% { filter: drop-shadow(0 0 25px rgba(59,158,255,0.18)); transform: scale(1); }
+  50%      { filter: drop-shadow(0 0 45px rgba(59,158,255,0.45)); transform: scale(1.04); }
+}
+
+.splash-scan {
+  position: absolute;
+  width: 110px;
+  height: 110px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: scanSquare 4.2s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+@keyframes scanSquare {
+  0%   { transform: translate(-90px, -90px) rotate(-15deg); }
+  20%  { transform: translate(-90px, -90px) rotate(-15deg); }
+  25%  { transform: translate(90px, -90px) rotate(15deg); }
+  45%  { transform: translate(90px, -90px) rotate(15deg); }
+  50%  { transform: translate(90px, 90px) rotate(45deg); }
+  70%  { transform: translate(90px, 90px) rotate(45deg); }
+  75%  { transform: translate(-90px, 90px) rotate(75deg); }
+  95%  { transform: translate(-90px, 90px) rotate(75deg); }
+  100% { transform: translate(-90px, -90px) rotate(105deg); }
+}
+
+.splash-square-path {
+  position: absolute;
+  width: 220px;
+  height: 220px;
+  border: 1px dashed rgba(59,158,255,0.18);
+  border-radius: 14px;
+  animation: pathRotate 8s linear infinite;
+}
+@keyframes pathRotate {
+  to { transform: rotate(360deg); }
+}
+
+.splash-ring {
+  position: absolute;
+  border: 1px solid rgba(59,158,255,0.18);
+  border-radius: 50%;
+  animation: ringExpand 2.4s ease-out infinite;
+}
+.splash-ring.r1 { width: 180px; height: 180px; animation-delay: 0s; }
+.splash-ring.r2 { width: 180px; height: 180px; animation-delay: 0.8s; }
+.splash-ring.r3 { width: 180px; height: 180px; animation-delay: 1.6s; }
+@keyframes ringExpand {
+  0%   { transform: scale(0.6); opacity: 0.7; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+.splash-title {
+  margin-top: 36px;
+  font-family: var(--font-display);
+  font-size: 36px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: var(--bright);
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  opacity: 0;
+  animation: fadeUp 0.8s ease 0.4s forwards;
+}
+.splash-title .a { color: #1e3a5f; }
+.splash-title .b { color: #3b9eff; }
+.splash-tag {
+  margin-top: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  opacity: 0;
+  animation: fadeUp 0.8s ease 0.7s forwards;
+}
+.splash-status {
+  margin-top: 22px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--blue);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  opacity: 0;
+  animation: fadeUp 0.8s ease 1s forwards, statusBlink 1.6s ease-in-out 1.4s infinite;
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes statusBlink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.4; }
+}
+
+/* ============================================================
+   LOGIN SCREEN
+   ============================================================ */
+#login-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  gap: 60px;
+}
+#login-screen.active { display: flex; animation: fadeIn 0.5s ease; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+.login-hero {
+  position: relative;
+  z-index: 5;
+  flex: 0 1 540px;
+  max-width: 540px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 28px;
+  animation: heroFloat 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.login-hero-art {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  filter: drop-shadow(0 30px 60px rgba(0,0,0,0.45)) drop-shadow(0 0 80px rgba(59,158,255,0.12));
+  animation: heroDrift 12s ease-in-out infinite alternate;
+}
+.login-hero-art svg { width: 100%; height: 100%; display: block; }
+.login-hero-copy { padding: 0 8px; }
+.login-hero-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--blue);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+.login-hero-headline {
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 600;
+  color: var(--bright);
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+  margin-bottom: 14px;
+}
+.login-hero-headline .b { color: var(--blue); }
+.login-hero-tag {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.6;
+  max-width: 460px;
+}
+@keyframes heroFloat {
+  from { opacity: 0; transform: translateX(-20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes heroDrift {
+  from { transform: translateY(0)    rotate(0); }
+  to   { transform: translateY(-6px) rotate(0.5deg); }
+}
+@media (max-width: 960px) {
+  #login-screen { gap: 20px; }
+  .login-hero { display: none; }
+}
+
+.login-card {
+  position: relative;
+  z-index: 5;
+  width: 100%;
+  max-width: 420px;
+  background: rgba(15, 22, 38, 0.78);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  border: 1px solid var(--border2);
+  border-radius: 20px;
+  padding: 36px 32px;
+  box-shadow:
+    0 30px 80px rgba(0,0,0,0.5),
+    0 0 80px rgba(59,158,255,0.08),
+    inset 0 1px 0 rgba(255,255,255,0.06);
+  animation: loginRise 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes loginRise {
+  from { opacity: 0; transform: translateY(20px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.login-logo-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 28px;
+}
+.login-logo-mark {
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(0 0 18px rgba(59,158,255,0.4));
+}
+.login-logo-text { display: flex; flex-direction: column; }
+.login-logo-name {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: var(--bright);
+}
+.login-logo-name .b { color: #3b9eff; }
+.login-logo-sub {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+.login-title {
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--bright);
+  margin-bottom: 6px;
+}
+.login-sub {
+  font-size: 13px;
+  color: var(--text);
+  margin-bottom: 26px;
+}
+
+.login-field { margin-bottom: 16px; }
+.login-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.login-input {
+  width: 100%;
+  background: rgba(8, 12, 22, 0.6);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px 12px 42px;
+  color: var(--bright);
+  font-family: var(--font);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.18s, box-shadow 0.18s, background 0.18s;
+}
+.login-input:focus {
+  border-color: var(--blue);
+  background: rgba(8, 12, 22, 0.85);
+  box-shadow: 0 0 0 3px rgba(59,158,255,0.18);
+}
+.login-input-wrap { position: relative; }
+.login-input-wrap i {
+  position: absolute;
+  top: 50%;
+  left: 14px;
+  transform: translateY(-50%);
+  color: var(--text);
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+}
+
+.login-btn {
+  width: 100%;
+  background: linear-gradient(135deg, var(--blue) 0%, var(--blue-2) 100%);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 13px 18px;
+  font-family: var(--font);
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: transform 0.15s, box-shadow 0.18s;
+  box-shadow: 0 8px 24px rgba(59,158,255,0.3);
+}
+.login-btn:hover { transform: translateY(-1px); box-shadow: 0 12px 32px rgba(59,158,255,0.45); }
+.login-btn:active { transform: translateY(0); }
+.login-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.login-error {
+  font-size: 12px;
+  color: var(--red);
+  background: var(--red-dim);
+  border: 1px solid rgba(244,63,94,0.3);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-top: 14px;
+  display: none;
+  align-items: center;
+  gap: 8px;
+}
+.login-error.show { display: flex; }
+
+.login-hint {
+  margin-top: 22px;
+  padding: 12px 14px;
+  background: rgba(59,158,255,0.06);
+  border: 1px solid rgba(59,158,255,0.18);
+  border-radius: 9px;
+  font-size: 11px;
+  color: var(--text2);
+  font-family: var(--font-mono);
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  line-height: 1.55;
+}
+.login-hint i { color: var(--blue); margin-top: 1px; flex-shrink: 0; }
+
+/* ============================================================
+   APP SHELL
+   ============================================================ */
+#app {
+  display: none;
+  position: relative;
+  z-index: 5;
+  min-height: 100vh;
+}
+#app.active { display: flex; }
+
+/* Sidebar */
+.sidebar {
+  width: 230px;
+  flex-shrink: 0;
+  background: rgba(10, 16, 28, 0.78);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  top: 0; left: 0; bottom: 0;
+  z-index: 50;
+  overflow-y: auto;
+}
+.sidebar-logo {
+  padding: 22px 20px 18px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.sidebar-logo .logo-mark {
+  width: 38px; height: 38px;
+  display: flex; align-items: center; justify-content: center;
+  filter: drop-shadow(0 0 12px rgba(59,158,255,0.45));
+  flex-shrink: 0;
+}
+.sidebar-logo .logo-name {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--bright);
+  letter-spacing: -0.025em;
+}
+.sidebar-logo .logo-name .b { color: var(--blue); }
+
+.sidebar-section { padding: 18px 12px 8px; }
+.sidebar-label {
+  font-family: var(--font-mono);
+  font-size: 9px; color: var(--muted);
+  letter-spacing: 0.22em; text-transform: uppercase;
+  padding: 0 10px; margin-bottom: 8px;
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  cursor: pointer;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.18s;
+  margin-bottom: 3px;
+  border: 1px solid transparent;
+  user-select: none;
+}
+.nav-item:hover { background: rgba(255,255,255,0.04); color: var(--bright); }
+.nav-item.active {
+  background: linear-gradient(135deg, rgba(59,158,255,0.18), rgba(59,158,255,0.05));
+  color: var(--blue);
+  border-color: rgba(59,158,255,0.3);
+}
+.nav-item.active i { color: var(--blue); }
+.nav-item i { width: 16px; height: 16px; flex-shrink: 0; }
+.nav-badge {
+  margin-left: auto;
+  background: var(--red);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 12px;
+  font-family: var(--font-mono);
+}
+.sidebar-divider { height: 1px; background: var(--border); margin: 8px 14px; }
+
+.threshold-section {
+  padding: 14px 16px;
+  margin: 4px 12px 8px;
+  background: rgba(8, 14, 26, 0.6);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.threshold-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 10px;
+}
+.threshold-title {
+  font-size: 10px; font-family: var(--font-mono);
+  color: var(--text); letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.threshold-val {
+  font-family: var(--font-mono); font-size: 14px;
+  font-weight: 600; color: var(--amber);
+}
+input[type=range] {
+  width: 100%;
+  accent-color: var(--blue);
+  height: 4px;
+  cursor: pointer;
+}
+.sidebar-bottom {
+  margin-top: auto;
+  padding: 12px;
+  border-top: 1px solid var(--border);
+}
+.user-card {
+  display: flex; align-items: center; gap: 11px;
+  padding: 9px 10px; border-radius: 9px;
+  transition: background 0.18s;
+  position: relative;
+}
+.user-card .user-info { cursor: pointer; flex: 1; min-width: 0; }
+.user-card .user-info:hover .user-name { color: var(--blue); }
+
+/* Profile popover */
+.profile-pop {
+  position: absolute;
+  bottom: calc(100% + 8px); left: 8px; right: 8px;
+  background: rgba(12,18,32,0.98);
+  border: 1px solid var(--border2);
+  border-radius: 12px;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+  padding: 14px 16px;
+  z-index: 200;
+  animation: panelRise 0.22s cubic-bezier(0.16,1,0.3,1);
+  display: none;
+}
+.profile-pop.open { display: block; }
+.profile-pop-row {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 11px; padding: 6px 0;
+  border-bottom: 1px dashed var(--border);
+}
+.profile-pop-row:last-of-type { border-bottom: none; }
+.profile-pop-key { color: var(--text); font-family: var(--font-mono); letter-spacing: 0.06em; }
+.profile-pop-val { color: var(--bright); font-weight: 600; }
+.avatar {
+  width: 32px; height: 32px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, var(--purple), var(--blue));
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; color: #fff;
+  flex-shrink: 0;
+}
+.user-info { flex: 1; min-width: 0; }
+.user-name {
+  font-size: 12px; font-weight: 600;
+  color: var(--bright);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.user-role {
+  font-size: 10px; color: var(--text);
+  font-family: var(--font-mono);
+}
+.user-card .signout-btn {
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 7px;
+  color: var(--text);
+  transition: all 0.15s;
+}
+.user-card .signout-btn:hover { background: var(--red-dim); color: var(--red); }
+
+/* Main */
+.main {
+  margin-left: 230px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  position: relative;
+  z-index: 4;
+}
+
+/* Topbar */
+.topbar {
+  height: 62px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 28px;
+  gap: 16px;
+  background: rgba(10, 16, 28, 0.78);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  position: sticky;
+  top: 0;
+  z-index: 40;
+}
+.topbar-tabs {
+  display: flex;
+  gap: 4px;
+  background: rgba(8, 12, 22, 0.5);
+  padding: 4px;
+  border-radius: 11px;
+  border: 1px solid var(--border);
+}
+.topbar-tab {
+  padding: 7px 18px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  color: var(--text);
+  transition: all 0.18s;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.topbar-tab.active {
+  background: linear-gradient(135deg, var(--blue) 0%, var(--blue-2) 100%);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(59,158,255,0.35);
+}
+.topbar-tab:not(.active):hover { background: rgba(255,255,255,0.05); color: var(--bright); }
+
+.topbar-badges { display: flex; gap: 8px; align-items: center; }
+.status-badge {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+}
+.status-badge.live {
+  background: var(--green-dim);
+  color: var(--green);
+  border: 1px solid rgba(16,185,129,0.3);
+}
+.status-badge.live.offline {
+  background: var(--red-dim);
+  color: var(--red);
+  border: 1px solid rgba(239,68,68,0.3);
+}
+.status-badge.live.offline::before {
+  background: var(--red) !important;
+  box-shadow: 0 0 8px var(--red) !important;
+  animation: none !important;
+}
+.status-badge.live::before {
+  content: '';
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  animation: blink 1.6s ease-in-out infinite;
+  box-shadow: 0 0 8px var(--green);
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+.status-badge.model {
+  background: var(--blue-dim);
+  color: var(--blue);
+  border: 1px solid rgba(59,158,255,0.3);
+}
+.topbar-icon-btn {
+  width: 36px; height: 36px;
+  border-radius: 9px;
+  background: rgba(8, 12, 22, 0.55);
+  border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  color: var(--text);
+  transition: all 0.18s;
+  position: relative;
+}
+.topbar-icon-btn:hover { border-color: var(--border2); color: var(--bright); }
+.notif-dot {
+  position: absolute; top: 8px; right: 8px;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--red);
+  border: 2px solid rgba(10,16,28,0.9);
+  box-shadow: 0 0 6px var(--red);
+  display: none;
+}
+.notif-dot.active { display: block; }
+
+/* Notification dropdown */
+.notif-panel {
+  position: absolute; top: calc(100% + 10px); right: 0;
+  width: 320px;
+  background: rgba(12,18,32,0.97);
+  border: 1px solid var(--border2);
+  border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 40px rgba(59,158,255,0.08);
+  backdrop-filter: blur(20px);
+  z-index: 200;
+  overflow: hidden;
+  animation: panelRise 0.22s cubic-bezier(0.16,1,0.3,1);
+  display: none;
+}
+.notif-panel.open { display: block; }
+.notif-panel-header {
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--border);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.notif-panel-title {
+  font-size: 11px; font-family: var(--font-mono);
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--text); font-weight: 600;
+}
+.notif-panel-clear {
+  font-size: 10px; color: var(--blue); cursor: pointer;
+}
+.notif-panel-clear:hover { text-decoration: underline; }
+.notif-item {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex; gap: 10px; align-items: flex-start;
+}
+.notif-item:last-child { border-bottom: none; }
+.notif-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+.notif-body { flex: 1; }
+.notif-msg { font-size: 12px; color: var(--bright); line-height: 1.45; }
+.notif-time { font-size: 10px; color: var(--muted); margin-top: 3px; font-family: var(--font-mono); }
+.notif-empty {
+  padding: 28px 16px; text-align: center;
+  font-size: 12px; color: var(--muted); line-height: 1.6;
+}
+
+/* Search overlay */
+.search-overlay {
+  position: fixed; inset: 0;
+  background: rgba(8,12,24,0.8);
+  backdrop-filter: blur(8px);
+  z-index: 500;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding-top: 80px;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.2s;
+}
+.search-overlay.open { opacity: 1; pointer-events: all; }
+.search-box {
+  width: min(640px, 90vw);
+  background: rgba(12,18,34,0.98);
+  border: 1px solid var(--border2);
+  border-radius: 16px;
+  box-shadow: 0 30px 80px rgba(0,0,0,0.7);
+  overflow: hidden;
+  animation: panelRise 0.25s cubic-bezier(0.16,1,0.3,1);
+}
+.search-input-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.search-input-row i[data-lucide] { color: var(--blue); flex-shrink: 0; width: 18px; height: 18px; }
+.search-input-field {
+  flex: 1; background: transparent; border: none; outline: none;
+  font-size: 15px; color: var(--bright); font-family: var(--font);
+}
+.search-input-field::placeholder { color: var(--muted); }
+.search-close-btn {
+  font-size: 11px; color: var(--muted); cursor: pointer;
+  background: rgba(255,255,255,0.06); border: 1px solid var(--border);
+  border-radius: 6px; padding: 3px 7px; font-family: var(--font-mono);
+}
+.search-close-btn:hover { color: var(--bright); }
+.search-results {
+  max-height: 360px; overflow-y: auto;
+  padding: 8px 0;
+}
+.search-result-item {
+  padding: 11px 20px; cursor: pointer;
+  display: flex; align-items: center; gap: 12px;
+  transition: background 0.15s;
+}
+.search-result-item:hover { background: rgba(59,158,255,0.07); }
+.search-result-label { font-size: 12px; color: var(--bright); flex: 1; }
+.search-result-meta { font-size: 10px; color: var(--muted); font-family: var(--font-mono); }
+.search-hint {
+  padding: 20px; text-align: center;
+  font-size: 12px; color: var(--muted); line-height: 1.6;
+}
+
+/* Content */
+.content {
+  padding: 24px 28px 60px;
+  flex: 1;
+  position: relative;
+  z-index: 2;
+}
+.tab-content { display: none; }
+.tab-content.active { display: block; animation: fadeUp 0.3s ease; }
+
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 22px;
+  gap: 16px;
+}
+.page-title {
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 600;
+  color: var(--bright);
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+}
+.page-sub {
+  font-size: 12px; color: var(--text);
+  margin-top: 4px;
+  font-family: var(--font-mono);
+}
+
+/* ============================================================
+   PANEL BASE
+   ============================================================ */
+.panel {
+  background: var(--panel-grad);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px;
+  position: relative;
+  overflow: hidden;
+  transition: background 0.3s ease, transform 0.25s ease, box-shadow 0.3s ease, border-color 0.25s ease;
+}
+.panel::before {
+  /* Top-left highlight that gives the panel a tiny bit of dimension. */
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse 80% 60% at 0% 0%,
+              rgba(59, 158, 255, 0.10) 0%,
+              rgba(59, 158, 255, 0) 60%);
+  opacity: 0.9;
+}
+.panel > * { position: relative; z-index: 1; }
+.panel.clickable { cursor: pointer; }
+.panel.clickable:hover {
+  background: var(--panel-grad-hover);
+  border-color: var(--border2);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.35), 0 0 0 1px rgba(59,158,255,0.22);
+}
+.panel-sm { padding: 16px 18px; }
+.panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 16px;
+  gap: 10px;
+}
+.panel-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--bright);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.panel-title .dot {
+  width: 3px; height: 14px;
+  border-radius: 2px;
+}
+.dot-blue   { background: var(--blue); }
+.dot-red    { background: var(--red); }
+.dot-green  { background: var(--green); }
+.dot-amber  { background: var(--amber); }
+.dot-purple { background: var(--purple); }
+.panel-action {
+  font-size: 11px;
+  color: var(--text);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  transition: color 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.panel-action:hover { color: var(--blue); }
+
+/* Expanded panel modal layer */
+.panel-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(3, 6, 15, 0.78);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+  animation: fadeIn 0.25s ease;
+}
+.panel-overlay.show { display: flex; }
+.panel-expanded {
+  background: rgba(15, 22, 38, 0.92);
+  backdrop-filter: blur(28px) saturate(160%);
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+  border: 1px solid var(--border2);
+  border-radius: 18px;
+  width: min(1100px, 100%);
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+  padding: 28px 32px;
+  box-shadow: 0 30px 100px rgba(0,0,0,0.6), 0 0 80px rgba(59,158,255,0.1);
+  animation: panelRise 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes panelRise {
+  from { opacity: 0; transform: scale(0.94) translateY(20px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+.panel-expanded-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 22px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+}
+.panel-expanded-title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--bright);
+  letter-spacing: -0.02em;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  background: rgba(8, 12, 22, 0.6);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--text2);
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+.back-btn:hover {
+  border-color: var(--blue);
+  color: var(--blue);
+  background: var(--blue-dim);
+}
+
+/* ============================================================
+   KPI GRID
+   ============================================================ */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.kpi-card {
+  background: var(--panel-grad);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px 20px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.kpi-card:hover {
+  background: var(--panel-grad-hover);
+  border-color: var(--border2);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 36px rgba(0,0,0,0.35), 0 0 0 1px rgba(59,158,255,0.20);
+}
+.kpi-card::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 2px;
+  opacity: 0.8;
+}
+.kpi-card.blue::before  { background: linear-gradient(90deg, var(--blue), transparent); }
+.kpi-card.red::before   { background: linear-gradient(90deg, var(--red), transparent); }
+.kpi-card.green::before { background: linear-gradient(90deg, var(--green), transparent); }
+.kpi-card.amber::before { background: linear-gradient(90deg, var(--amber), transparent); }
+.kpi-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 14px;
+}
+.kpi-label {
+  font-size: 11px;
+  color: var(--text);
+  font-weight: 500;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.kpi-icon {
+  width: 32px; height: 32px;
+  border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+}
+.kpi-icon i { width: 16px; height: 16px; }
+.kpi-icon.blue  { background: var(--blue-dim);   color: var(--blue); }
+.kpi-icon.red   { background: var(--red-dim);    color: var(--red); }
+.kpi-icon.green { background: var(--green-dim);  color: var(--green); }
+.kpi-icon.amber { background: var(--amber-dim);  color: var(--amber); }
+.kpi-value {
+  font-family: var(--font-display);
+  font-size: 34px;
+  font-weight: 700;
+  color: var(--bright);
+  line-height: 1;
+  margin-bottom: 8px;
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
+}
+.kpi-value.red   { color: var(--red); }
+.kpi-value.green { color: var(--green); }
+.kpi-value.amber { color: var(--amber); }
+.kpi-trend {
+  font-size: 11px;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+}
+.kpi-trend .up   { color: var(--red); }
+.kpi-trend .down { color: var(--green); }
+
+/* ============================================================
+   LAYOUT GRIDS
+   ============================================================ */
+.charts-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 320px;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.two-col   { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+.three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+.full-width { margin-bottom: 20px; }
+
+/* ============================================================
+   RISK SCORE / CHARTS
+   ============================================================ */
+.risk-score-wrap {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 8px 0;
+}
+.ring-svg { transform: rotate(-90deg); }
+.ring-track { fill: none; stroke: rgba(80,120,180,0.2); stroke-width: 8; }
+.ring-fill {
+  fill: none;
+  stroke-width: 8;
+  stroke-linecap: round;
+  stroke-dasharray: 220;
+  stroke-dashoffset: 220;
+  transition: stroke-dashoffset 1.2s cubic-bezier(0.4,0,0.2,1);
+}
+.ring-fill.grade-a { stroke: var(--green); }
+.ring-fill.grade-b { stroke: var(--blue);  }
+.ring-fill.grade-c { stroke: var(--amber); }
+.ring-fill.grade-d, .ring-fill.grade-f { stroke: var(--red); }
+.ring-center {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+}
+.ring-grade {
+  font-family: var(--font-display);
+  font-size: 44px; font-weight: 700;
+  letter-spacing: -0.03em;
+}
+.ring-grade.grade-a, .ring-grade.grade-b { color: var(--green); }
+.ring-grade.grade-c { color: var(--amber); }
+.ring-grade.grade-d, .ring-grade.grade-f { color: var(--red); }
+.ring-sub {
+  font-size: 9px; color: var(--text);
+  font-family: var(--font-mono);
+  letter-spacing: 0.15em;
+  margin-top: 2px;
+}
+.risk-desc {
+  font-size: 12px; color: var(--text);
+  text-align: center; margin-top: 12px; line-height: 1.55;
+}
+.risk-scale {
+  display: flex; gap: 4px; margin-top: 12px;
+  width: 100%; justify-content: center;
+}
+.scale-item {
+  flex: 1; height: 3px;
+  border-radius: 2px;
+  background: rgba(80,120,180,0.18);
+  position: relative;
+}
+.scale-item.active.green { background: var(--green); }
+.scale-item.active.blue { background: var(--blue); }
+.scale-item.active.amber { background: var(--amber); }
+.scale-item.active.red { background: var(--red); }
+
+/* Bar chart */
+.risk-bars { display: flex; flex-direction: column; gap: 12px; }
+.risk-bar-row { display: flex; align-items: center; gap: 12px; }
+.risk-bar-label {
+  font-size: 12px; color: var(--text2);
+  width: 64px; flex-shrink: 0;
+  font-weight: 500;
+}
+.risk-bar-track {
+  flex: 1; height: 8px;
+  background: rgba(80,120,180,0.15);
+  border-radius: 4px; overflow: hidden;
+}
+.risk-bar-fill {
+  height: 100%; border-radius: 4px;
+  transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 0 8px currentColor;
+}
+.risk-bar-fill.critical { background: var(--red); color: var(--red); }
+.risk-bar-fill.high     { background: #fb923c; color: #fb923c; }
+.risk-bar-fill.medium   { background: var(--amber); color: var(--amber); }
+.risk-bar-fill.low      { background: var(--green); color: var(--green); }
+.risk-bar-count {
+  font-family: var(--font-mono);
+  font-size: 11px; color: var(--bright);
+  width: 36px; text-align: right;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Donut */
+.donut-wrap { display: flex; align-items: center; gap: 22px; }
+.donut-svg { flex-shrink: 0; }
+.donut-legend { display: flex; flex-direction: column; gap: 10px; flex: 1; }
+.legend-item { display: flex; align-items: center; gap: 9px; }
+.legend-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%; flex-shrink: 0;
+  box-shadow: 0 0 6px currentColor;
+}
+.legend-label { font-size: 12px; color: var(--text2); }
+.legend-pct {
+  font-family: var(--font-mono);
+  font-size: 12px; color: var(--bright);
+  font-weight: 600;
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+/* TABLES */
+.alerts-table, .leaderboard, .compare-table {
+  width: 100%; border-collapse: collapse;
+}
+.alerts-table th, .leaderboard th, .compare-table th {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text);
+  text-align: left;
+  padding: 8px 14px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+  font-weight: 500;
+}
+.alerts-table td, .leaderboard td, .compare-table td {
+  padding: 12px 14px;
+  font-size: 12.5px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text2);
+  vertical-align: middle;
+}
+.alerts-table tr:last-child td, .leaderboard tr:last-child td { border-bottom: none; }
+.alerts-table tr:hover td, .leaderboard tr:hover td { background: rgba(255,255,255,0.025); }
+.compare-table .winner { color: var(--green); font-weight: 600; }
+.compare-table .loser  { color: var(--text); }
+.metric-bar-inline {
+  height: 4px; border-radius: 2px;
+  display: inline-block; vertical-align: middle;
+  margin-right: 8px;
+}
+.table-wrap { overflow-x: auto; }
+.rank-num { font-family: var(--font-mono); color: var(--text); font-size: 11px; }
+
+/* Tags */
+.tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 10px; font-weight: 600;
+  letter-spacing: 0.06em;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+.tag.malicious { background: var(--red-dim); color: var(--red); border: 1px solid rgba(244,63,94,0.3); }
+.tag.normal    { background: var(--green-dim); color: var(--green); border: 1px solid rgba(16,185,129,0.3); }
+.tag.high      { background: var(--red-dim); color: var(--red); border: 1px solid rgba(244,63,94,0.3); }
+.tag.moderate  { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(245,158,11,0.3); }
+.tag.low       { background: var(--green-dim); color: var(--green); border: 1px solid rgba(16,185,129,0.3); }
+.tag.critical  { background: rgba(239,68,68,0.15); color: #ef4444; border: 1px solid rgba(239,68,68,0.3); }
+.tag.pending   { background: var(--blue-dim); color: var(--blue); border: 1px solid rgba(59,158,255,0.3); }
+.tag.open          { background: rgba(148,163,184,0.14); color: #94a3b8; border: 1px solid rgba(148,163,184,0.3); }
+.tag.investigating { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(245,158,11,0.3); }
+.tag.cleared       { background: var(--green-dim); color: var(--green); border: 1px solid rgba(16,185,129,0.3); }
+.tag.escalated     { background: rgba(239,68,68,0.18); color: #ef4444; border: 1px solid rgba(239,68,68,0.4); }
+
+.prob-mini {
+  width: 64px; height: 5px;
+  background: rgba(80,120,180,0.18);
+  border-radius: 3px;
+  display: inline-block; vertical-align: middle;
+  overflow: hidden;
+}
+.prob-mini-fill {
+  height: 100%; border-radius: 3px;
+  background: linear-gradient(90deg, var(--amber), var(--red));
+  transition: width 0.6s ease;
+}
+
+.action-dots {
+  color: var(--text); cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 5px;
+  font-size: 16px; line-height: 1;
+  transition: all 0.15s;
+}
+.action-dots:hover { background: rgba(80,120,180,0.18); color: var(--bright); }
+
+/* ============================================================
+   FORMS / BUTTONS
+   ============================================================ */
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.form-group { display: flex; flex-direction: column; gap: 6px; }
+.form-label {
+  font-size: 11px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 500;
+}
+
+input[type=number], input[type=text], input[type=password], select, textarea {
+  background: rgba(8, 12, 22, 0.55);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 13px;
+  color: var(--bright);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  width: 100%;
+  transition: border-color 0.18s, box-shadow 0.18s, background 0.18s;
+  outline: none;
+}
+input[type=number]:focus, input[type=text]:focus, select:focus, textarea:focus {
+  border-color: var(--blue);
+  background: rgba(8, 12, 22, 0.85);
+  box-shadow: 0 0 0 3px rgba(59,158,255,0.15);
+}
+select option { background: #0d1421; color: var(--bright); }
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  cursor: pointer;
+  padding: 4px 0;
+}
+.checkbox-row input[type=checkbox] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  border: 2px solid rgba(80,120,180,0.45);
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+  position: relative;
+}
+.checkbox-row input[type=checkbox]:checked {
+  background: var(--blue);
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(59,158,255,0.18);
+}
+.checkbox-row input[type=checkbox]:checked::after {
+  content: '';
+  position: absolute;
+  top: 2px; left: 5px;
+  width: 4px; height: 7px;
+  border: 2px solid #fff;
+  border-top: none;
+  border-left: none;
+  transform: rotate(45deg);
+}
+.checkbox-row span { font-size: 12px; color: var(--text2); }
+
+.section-sep { grid-column: 1/-1; margin-top: 6px; }
+.section-sep-label {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 500;
+}
+.section-sep-label::after {
+  content: '';
+  flex: 1; height: 1px;
+  background: var(--border);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 22px;
+  border-radius: 9px;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font);
+  font-weight: 600;
+  font-size: 13px;
+  transition: all 0.18s;
+  letter-spacing: 0.01em;
+}
+.btn-primary {
+  background: linear-gradient(135deg, var(--blue) 0%, var(--blue-2) 100%);
+  color: #fff;
+  box-shadow: 0 6px 18px rgba(59,158,255,0.3);
+}
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 28px rgba(59,158,255,0.42);
+}
+.btn-primary:disabled {
+  background: rgba(80,120,180,0.2);
+  color: var(--text);
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+.btn-danger { background: var(--red); color: #fff; }
+.btn-danger:hover { background: #e11d48; }
+.btn-ghost {
+  background: rgba(8, 12, 22, 0.5);
+  color: var(--text2);
+  border: 1px solid var(--border);
+}
+.btn-ghost:hover {
+  border-color: var(--blue);
+  color: var(--blue);
+  background: var(--blue-dim);
+}
+.btn-ghost.active {
+  border-color: var(--blue);
+  color: var(--blue);
+  background: var(--blue-dim);
+}
+.btn-sm { padding: 7px 14px; font-size: 12px; }
+.btn i { width: 14px; height: 14px; }
+
+/* Spinner */
+.spinner {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid rgba(255,255,255,0.2);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ============================================================
+   RESULT / VERDICT / SHAP
+   ============================================================ */
+#result-panel { display: none; animation: fadeUp 0.4s ease; }
+
+.verdict-banner {
+  border-radius: 14px;
+  padding: 24px 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+  position: relative;
+  overflow: hidden;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.verdict-banner.malicious {
+  background: linear-gradient(135deg, rgba(244,63,94,0.18), rgba(244,63,94,0.04));
+  border: 1px solid rgba(244,63,94,0.4);
+  box-shadow: 0 0 30px rgba(244,63,94,0.18);
+}
+.verdict-banner.normal {
+  background: linear-gradient(135deg, rgba(16,185,129,0.18), rgba(16,185,129,0.04));
+  border: 1px solid rgba(16,185,129,0.4);
+  box-shadow: 0 0 30px rgba(16,185,129,0.18);
+}
+.verdict-label {
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.025em;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.verdict-label.malicious { color: var(--red); }
+.verdict-label.normal    { color: var(--green); }
+.verdict-sub {
+  font-size: 12px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  margin-top: 6px;
+  letter-spacing: 0.05em;
+}
+.verdict-right { text-align: right; }
+.conf-num {
+  font-family: var(--font-display);
+  font-size: 46px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.conf-num.malicious { color: var(--red); }
+.conf-num.normal    { color: var(--green); }
+.conf-label {
+  font-size: 10px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  letter-spacing: 0.15em;
+  margin-top: 2px;
+}
+
+.metrics-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.metric-card {
+  background: rgba(15, 22, 38, 0.55);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  padding: 16px;
+  text-align: center;
+}
+.metric-val {
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 600;
+  color: var(--bright);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.metric-label {
+  font-size: 10px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  margin-top: 4px;
+  letter-spacing: 0.1em;
+}
+
+/* SHAP */
+.shap-chart { display: flex; flex-direction: column; gap: 11px; }
+.shap-row { display: flex; align-items: center; gap: 12px; }
+.shap-name {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text2);
+  width: 200px;
+  flex-shrink: 0;
+  text-align: right;
+}
+.shap-bar-wrap {
+  flex: 1; height: 18px;
+  background: rgba(80,120,180,0.15);
+  border-radius: 5px;
+  overflow: hidden;
+}
+.shap-bar {
+  height: 100%;
+  border-radius: 5px;
+  transition: width 0.8s cubic-bezier(0.4,0,0.2,1);
+}
+.shap-bar.risk { background: linear-gradient(90deg, var(--red), #fb7185); box-shadow: 0 0 8px rgba(244,63,94,0.4); }
+.shap-bar.safe { background: linear-gradient(90deg, var(--green), #34d399); box-shadow: 0 0 8px rgba(16,185,129,0.4); }
+.shap-val {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text);
+  width: 60px;
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.explanation-box {
+  background: rgba(15, 22, 38, 0.55);
+  border-left: 3px solid var(--blue);
+  border-radius: 0 11px 11px 0;
+  padding: 16px 18px;
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--text2);
+}
+
+/* Upload */
+.upload-zone {
+  border: 2px dashed var(--border2);
+  border-radius: 14px;
+  padding: 36px 24px 40px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.25s;
+  background: rgba(15, 22, 38, 0.4);
+}
+.upload-zone:hover {
+  border-color: var(--blue);
+  background: var(--blue-dim);
+  transform: translateY(-2px);
+}
+.upload-zone.dragover {
+  border-color: var(--blue);
+  background: var(--blue-dim);
+}
+.upload-art {
+  width: 200px;
+  height: 130px;
+  margin: 0 auto 8px;
+  display: block;
+  filter: drop-shadow(0 8px 22px rgba(59,158,255,0.18));
+}
+.upload-text {
+  font-size: 14px; color: var(--text2);
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+.upload-hint {
+  font-size: 11px; color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+/* Empty state used inside table cells (history). */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 40px 20px;
+  color: var(--text);
+}
+.empty-state-art {
+  width: 180px;
+  height: 130px;
+  filter: drop-shadow(0 10px 26px rgba(59,158,255,0.12));
+}
+.empty-state-title {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--bright);
+  letter-spacing: -0.01em;
+}
+.empty-state-sub {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text);
+  max-width: 340px;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.summary-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.sum-card {
+  background: var(--panel-grad);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  position: relative;
+  overflow: hidden;
+  padding: 18px;
+  text-align: center;
+}
+.sum-num {
+  font-family: var(--font-display);
+  font-size: 32px; font-weight: 700;
+  color: var(--bright);
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
+}
+.sum-label {
+  font-size: 10px; color: var(--text);
+  font-family: var(--font-mono);
+  margin-top: 5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* Confusion matrix */
+.cm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.cm-cell {
+  border-radius: 10px;
+  padding: 16px;
+  text-align: center;
+  font-family: var(--font-mono);
+  background: rgba(15, 22, 38, 0.5);
+}
+.cm-cell.tp { background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.25); }
+.cm-cell.tn { background: rgba(59,158,255,0.1); border: 1px solid rgba(59,158,255,0.25); }
+.cm-cell.fp { background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.25); }
+.cm-cell.fn { background: rgba(244,63,94,0.1); border: 1px solid rgba(244,63,94,0.25); }
+.cm-val {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--bright);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.cm-label {
+  font-size: 9px; color: var(--text);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-top: 4px;
+}
+
+/* Severity rows */
+.sev-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.sev-row:last-child { border-bottom: none; }
+.sev-icon {
+  width: 30px; height: 30px;
+  border-radius: 7px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.sev-icon i { width: 14px; height: 14px; }
+.sev-icon.critical { background: var(--red-dim); color: var(--red); }
+.sev-icon.high     { background: rgba(251,146,60,0.14); color: #fb923c; }
+.sev-icon.medium   { background: var(--amber-dim); color: var(--amber); }
+.sev-icon.low      { background: var(--green-dim); color: var(--green); }
+.sev-name {
+  font-size: 12.5px; font-weight: 500;
+  color: var(--bright);
+  flex: 1;
+}
+.sev-count {
+  font-family: var(--font-mono);
+  font-size: 12px; color: var(--text2);
+  width: 50px; text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Model card */
+.model-card {
+  border-radius: 11px;
+  padding: 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  backdrop-filter: blur(14px);
+}
+.model-card.rf {
+  background: linear-gradient(135deg, rgba(59,158,255,0.12), rgba(59,158,255,0.04));
+  border: 1px solid rgba(59,158,255,0.3);
+}
+.model-card.lr {
+  background: rgba(15, 22, 38, 0.5);
+  border: 1px solid var(--border);
+}
+.model-card.selected {
+  border-color: var(--green) !important;
+  background: linear-gradient(135deg, rgba(16,185,129,0.14), rgba(16,185,129,0.04)) !important;
+  box-shadow: 0 0 18px rgba(16,185,129,0.18);
+  opacity: 1 !important;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.model-card.selected .model-icon {
+  color: var(--green) !important;
+}
+.model-card.dimmed {
+  opacity: 0.4;
+  filter: grayscale(0.5);
+  border-color: var(--border) !important;
+  background: rgba(15,22,38,0.3) !important;
+  box-shadow: none;
+  transition: opacity 0.2s, filter 0.2s;
+}
+.model-icon {
+  width: 38px; height: 38px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 9px;
+  background: rgba(8, 12, 22, 0.5);
+}
+.model-icon.rf { color: var(--blue); }
+.model-icon.lr { color: var(--text); }
+.model-icon i { width: 20px; height: 20px; }
+.model-name {
+  font-family: var(--font-display);
+  font-size: 15px; font-weight: 600;
+  color: var(--bright);
+  letter-spacing: -0.01em;
+}
+.model-desc {
+  font-size: 11px; color: var(--text);
+  margin-top: 2px;
+  font-family: var(--font-mono);
+}
+.model-badge { margin-left: auto; }
+
+/* Toast */
+#toast {
+  position: fixed;
+  bottom: 24px; right: 24px;
+  background: rgba(15, 22, 38, 0.95);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--border2);
+  color: var(--bright);
+  padding: 13px 20px;
+  border-radius: 10px;
+  font-size: 13px;
+  z-index: 1000;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: all 0.25s;
+  pointer-events: none;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+#toast.show { opacity: 1; transform: translateY(0); }
+#toast.error { border-color: rgba(244,63,94,0.4); }
+#toast.success { border-color: rgba(16,185,129,0.4); }
+
+/* Status select dropdown for case management */
+.status-select {
+  background: rgba(8, 12, 22, 0.6);
+  border: 1px solid var(--border);
+  color: var(--text2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+/* History table row checkbox (circle) */
+.row-check {
+  appearance: none; -webkit-appearance: none;
+  width: 15px; height: 15px;
+  border-radius: 50%;
+  border: 2px solid rgba(80,120,180,0.4);
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s;
+  position: relative;
+  display: block;
+}
+.row-check:checked {
+  background: var(--blue);
+  border-color: var(--blue);
+}
+.row-check:checked::after {
+  content: '';
+  position: absolute;
+  top: 1px; left: 4px;
+  width: 4px; height: 7px;
+  border: 2px solid #fff;
+  border-top: none; border-left: none;
+  transform: rotate(45deg);
+}
+
+/* Escalated row highlight */
+.alerts-table tr.row-escalated td { background: rgba(139,92,246,0.06); }
+.alerts-table tr.row-escalated:hover td { background: rgba(139,92,246,0.1); }
+
+/* Selected row highlight */
+.alerts-table tr.row-selected td { background: rgba(59,158,255,0.07); }
+
+/* Bulk action bar */
+.bulk-bar {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: rgba(59,158,255,0.08);
+  border: 1px solid rgba(59,158,255,0.2);
+  border-radius: 8px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--text2);
+}
+.bulk-bar.visible { display: flex; }
+.bulk-bar .bulk-count { font-weight: 600; color: var(--bright); font-family: var(--font-mono); }
+.bulk-bar select {
+  background: rgba(8,12,22,0.7);
+  border: 1px solid var(--border2);
+  color: var(--text2);
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.btn-delete-icon {
+  background: rgba(244,63,94,0.1);
+  border: 1px solid rgba(244,63,94,0.3);
+  color: var(--red);
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  display: flex; align-items: center; gap: 5px;
+  transition: background 0.15s;
+}
+.btn-delete-icon:hover { background: rgba(244,63,94,0.2); }
+
+/* Responsive */
+@media (max-width: 1100px) {
+  .charts-row { grid-template-columns: 1fr; }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  .form-grid { grid-template-columns: 1fr; }
+  .two-col, .three-col { grid-template-columns: 1fr; }
+}
+@media (max-width: 720px) {
+  .sidebar { transform: translateX(-100%); }
+  .main { margin-left: 0; }
+}
+</style>
+</head>
+<body>
+
+<!-- Reusable SecureLens logo definitions. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="sl-logo" viewBox="0 0 100 100">
+      <!-- Magnifying glass body. -->
+      <circle cx="42" cy="42" r="30" fill="rgba(220, 235, 250, 0.95)" stroke="#1e3a5f" stroke-width="5"/>
+      <!-- Warning triangle inside the lens. -->
+      <path d="M 42 26 L 58 52 L 26 52 Z" fill="none" stroke="#1e3a5f" stroke-width="4" stroke-linejoin="round"/>
+      <!-- Triangle exclamation mark. -->
+      <line x1="42" y1="34" x2="42" y2="44" stroke="#1e3a5f" stroke-width="4" stroke-linecap="round"/>
+      <circle cx="42" cy="48" r="2" fill="#1e3a5f"/>
+      <!-- Radiating lines around the triangle. -->
+      <g stroke="#3b9eff" stroke-width="2.5" stroke-linecap="round">
+        <line x1="22" y1="28" x2="28" y2="32"/>
+        <line x1="20" y1="40" x2="27" y2="40"/>
+        <line x1="62" y1="28" x2="56" y2="32"/>
+        <line x1="64" y1="40" x2="57" y2="40"/>
+      </g>
+      <!-- Magnifying glass handle. -->
+      <rect x="63" y="63" width="22" height="11" rx="5.5"
+            transform="rotate(45 63 63)" fill="#3b9eff" stroke="#1e3a5f" stroke-width="3"/>
+    </symbol>
+
+    <!-- Splash background hex grid. Used as a subtle pattern behind the scan animation. -->
+    <pattern id="sl-hex" x="0" y="0" width="60" height="52" patternUnits="userSpaceOnUse">
+      <polygon points="30,2 56,17 56,42 30,57 4,42 4,17"
+               fill="none" stroke="rgba(59,158,255,0.08)" stroke-width="1"/>
+    </pattern>
+
+    <!-- Login left panel hero illustration: shield, circuit traces, floating telemetry. -->
+    <symbol id="sl-login-hero" viewBox="0 0 600 600">
+      <defs>
+        <pattern id="lh-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(59,158,255,0.06)" stroke-width="1"/>
+        </pattern>
+        <radialGradient id="lh-glow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%"  stop-color="rgba(59,158,255,0.22)"/>
+          <stop offset="60%" stop-color="rgba(59,158,255,0.04)"/>
+          <stop offset="100%" stop-color="rgba(59,158,255,0)"/>
+        </radialGradient>
+        <linearGradient id="lh-shield" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%"  stop-color="#3b9eff"/>
+          <stop offset="100%" stop-color="#1e88f5"/>
+        </linearGradient>
+      </defs>
+
+      <!-- Faint grid backdrop. -->
+      <rect width="600" height="600" fill="url(#lh-grid)"/>
+
+      <!-- Soft centred glow. -->
+      <circle cx="300" cy="300" r="260" fill="url(#lh-glow)"/>
+
+      <!-- Concentric orbital rings around the shield. -->
+      <g fill="none" stroke="rgba(59,158,255,0.18)" stroke-width="1">
+        <circle cx="300" cy="300" r="170" stroke-dasharray="4 6"/>
+        <circle cx="300" cy="300" r="220" stroke-dasharray="2 8"/>
+        <circle cx="300" cy="300" r="265" stroke-dasharray="1 10" opacity="0.6"/>
+      </g>
+
+      <!-- Circuit traces flowing into the shield from each side. -->
+      <g fill="none" stroke="rgba(59,158,255,0.35)" stroke-width="1.5" stroke-linecap="round">
+        <path d="M 40 130 L 140 130 L 180 170 L 230 170"/>
+        <path d="M 40 300 L 180 300 L 215 280"/>
+        <path d="M 40 470 L 140 470 L 180 430 L 230 430"/>
+        <path d="M 560 130 L 460 130 L 420 170 L 370 170"/>
+        <path d="M 560 300 L 420 300 L 385 280"/>
+        <path d="M 560 470 L 460 470 L 420 430 L 370 430"/>
+      </g>
+
+      <!-- Circuit endpoint nodes. -->
+      <g fill="#3b9eff">
+        <circle cx="40"  cy="130" r="4"/>
+        <circle cx="40"  cy="300" r="4"/>
+        <circle cx="40"  cy="470" r="4"/>
+        <circle cx="560" cy="130" r="4"/>
+        <circle cx="560" cy="300" r="4"/>
+        <circle cx="560" cy="470" r="4"/>
+      </g>
+      <g fill="rgba(59,158,255,0.25)">
+        <circle cx="40"  cy="130" r="10"/>
+        <circle cx="560" cy="300" r="10"/>
+        <circle cx="40"  cy="470" r="10"/>
+      </g>
+
+      <!-- Central shield with checkmark. -->
+      <g transform="translate(300 300)">
+        <path d="M 0 -110 L 88 -66 L 88 30 Q 88 100 0 140 Q -88 100 -88 30 L -88 -66 Z"
+              fill="rgba(8, 14, 28, 0.92)"
+              stroke="url(#lh-shield)"
+              stroke-width="3"/>
+        <path d="M 0 -90 L 70 -54 L 70 24 Q 70 78 0 110 Q -70 78 -70 24 L -70 -54 Z"
+              fill="none"
+              stroke="rgba(59,158,255,0.18)"
+              stroke-width="1"/>
+        <!-- Checkmark inside. -->
+        <path d="M -34 6 L -6 34 L 38 -22"
+              fill="none"
+              stroke="#3b9eff"
+              stroke-width="7"
+              stroke-linecap="round"
+              stroke-linejoin="round"/>
+      </g>
+
+      <!-- Telemetry chip - top left. -->
+      <g transform="translate(95 90)">
+        <rect x="-44" y="-20" width="88" height="40" rx="9"
+              fill="rgba(15,22,38,0.92)" stroke="rgba(59,158,255,0.45)" stroke-width="1"/>
+        <circle cx="-30" cy="0" r="4" fill="#10b981"/>
+        <rect x="-18" y="-7" width="50" height="3" rx="1.5" fill="rgba(241,245,249,0.55)"/>
+        <rect x="-18" y="2"  width="34" height="3" rx="1.5" fill="rgba(241,245,249,0.25)"/>
+      </g>
+
+      <!-- Telemetry chip - bottom right. -->
+      <g transform="translate(505 510)">
+        <rect x="-44" y="-20" width="88" height="40" rx="9"
+              fill="rgba(15,22,38,0.92)" stroke="rgba(244,63,94,0.45)" stroke-width="1"/>
+        <circle cx="-30" cy="0" r="4" fill="#f43f5e"/>
+        <rect x="-18" y="-7" width="50" height="3" rx="1.5" fill="rgba(241,245,249,0.55)"/>
+        <rect x="-18" y="2"  width="28" height="3" rx="1.5" fill="rgba(241,245,249,0.25)"/>
+      </g>
+
+      <!-- Mini sparkline chip - top right. -->
+      <g transform="translate(490 110)">
+        <rect x="-48" y="-22" width="96" height="44" rx="9"
+              fill="rgba(15,22,38,0.92)" stroke="rgba(59,158,255,0.35)" stroke-width="1"/>
+        <polyline points="-36,8 -22,2 -8,10 6,-4 20,2 34,-10"
+                  fill="none" stroke="#3b9eff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <text x="-36" y="-8" font-family="JetBrains Mono, monospace" font-size="8" fill="rgba(241,245,249,0.55)">RECALL</text>
+      </g>
+
+      <!-- Mini stack chip - bottom left. -->
+      <g transform="translate(110 510)">
+        <rect x="-48" y="-22" width="96" height="44" rx="9"
+              fill="rgba(15,22,38,0.92)" stroke="rgba(59,158,255,0.35)" stroke-width="1"/>
+        <g transform="translate(-36 12)">
+          <rect x="0"  y="-18" width="8" height="18" rx="1.5" fill="rgba(59,158,255,0.35)"/>
+          <rect x="12" y="-12" width="8" height="12" rx="1.5" fill="rgba(59,158,255,0.55)"/>
+          <rect x="24" y="-22" width="8" height="22" rx="1.5" fill="#3b9eff"/>
+          <rect x="36" y="-8"  width="8" height="8"  rx="1.5" fill="rgba(59,158,255,0.35)"/>
+        </g>
+        <text x="-36" y="-8" font-family="JetBrains Mono, monospace" font-size="8" fill="rgba(241,245,249,0.55)">ALERTS</text>
+      </g>
+    </symbol>
+
+    <!-- Empty state: no history rows yet. -->
+    <symbol id="sl-empty-history" viewBox="0 0 240 180">
+      <ellipse cx="120" cy="160" rx="70" ry="6" fill="rgba(59,158,255,0.08)"/>
+      <!-- Stack of documents. -->
+      <g transform="translate(70 30)">
+        <rect x="6" y="6" width="100" height="120" rx="8" fill="rgba(15, 22, 38, 0.5)" stroke="rgba(80,120,180,0.25)"/>
+        <rect x="0" y="0" width="100" height="120" rx="8" fill="rgba(15, 22, 38, 0.85)" stroke="rgba(80,120,180,0.45)"/>
+        <rect x="14" y="22" width="72" height="3" rx="1.5" fill="rgba(241,245,249,0.22)"/>
+        <rect x="14" y="34" width="56" height="3" rx="1.5" fill="rgba(241,245,249,0.14)"/>
+        <rect x="14" y="46" width="64" height="3" rx="1.5" fill="rgba(241,245,249,0.14)"/>
+        <rect x="14" y="58" width="48" height="3" rx="1.5" fill="rgba(241,245,249,0.14)"/>
+        <rect x="14" y="78" width="72" height="3" rx="1.5" fill="rgba(241,245,249,0.14)"/>
+        <rect x="14" y="90" width="40" height="3" rx="1.5" fill="rgba(241,245,249,0.14)"/>
+      </g>
+      <!-- Magnifying glass on top. -->
+      <g transform="translate(155 100)">
+        <circle r="26" fill="rgba(8,14,28,0.85)" stroke="#3b9eff" stroke-width="3"/>
+        <circle r="22" fill="none" stroke="rgba(59,158,255,0.25)" stroke-width="1"/>
+        <line x1="18" y1="18" x2="36" y2="36" stroke="#3b9eff" stroke-width="5" stroke-linecap="round"/>
+      </g>
+    </symbol>
+
+    <!-- Empty state: batch upload prompt graphic. -->
+    <symbol id="sl-empty-batch" viewBox="0 0 240 160">
+      <ellipse cx="120" cy="140" rx="80" ry="6" fill="rgba(59,158,255,0.08)"/>
+      <!-- Cloud. -->
+      <path d="M 70 90 Q 50 90 50 70 Q 50 50 75 50 Q 80 30 105 30 Q 135 30 140 55 Q 170 55 170 80 Q 170 100 145 100 L 75 100 Q 65 100 70 90 Z"
+            fill="rgba(15, 22, 38, 0.85)"
+            stroke="rgba(59,158,255,0.5)"
+            stroke-width="1.5"/>
+      <!-- Up arrow on cloud. -->
+      <g transform="translate(110 75)" stroke="#3b9eff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none">
+        <line x1="0" y1="-12" x2="0" y2="16"/>
+        <polyline points="-8,-4 0,-12 8,-4"/>
+      </g>
+      <!-- File icons under the cloud. -->
+      <g transform="translate(70 115)">
+        <rect width="18" height="22" rx="2" fill="rgba(8,14,28,0.85)" stroke="rgba(80,120,180,0.5)"/>
+        <line x1="4" y1="8"  x2="14" y2="8"  stroke="rgba(241,245,249,0.3)" stroke-width="1"/>
+        <line x1="4" y1="12" x2="11" y2="12" stroke="rgba(241,245,249,0.2)" stroke-width="1"/>
+      </g>
+      <g transform="translate(112 115)">
+        <rect width="18" height="22" rx="2" fill="rgba(8,14,28,0.85)" stroke="rgba(59,158,255,0.6)"/>
+        <line x1="4" y1="8"  x2="14" y2="8"  stroke="rgba(59,158,255,0.55)" stroke-width="1"/>
+        <line x1="4" y1="12" x2="11" y2="12" stroke="rgba(59,158,255,0.35)" stroke-width="1"/>
+      </g>
+      <g transform="translate(154 115)">
+        <rect width="18" height="22" rx="2" fill="rgba(8,14,28,0.85)" stroke="rgba(80,120,180,0.5)"/>
+        <line x1="4" y1="8"  x2="14" y2="8"  stroke="rgba(241,245,249,0.3)" stroke-width="1"/>
+        <line x1="4" y1="12" x2="11" y2="12" stroke="rgba(241,245,249,0.2)" stroke-width="1"/>
+      </g>
+    </symbol>
+  </defs>
+</svg>
+
+<!-- Tunnel canvas background plus tinted overlay for the dashboard. -->
+<canvas id="tunnel-canvas"></canvas>
+<div class="tunnel-overlay"></div>
+
+<!-- Splash screen with the scanning logo animation. -->
+<div id="splash">
+  <div class="splash-bg-art">
+    <svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice">
+      <rect width="100%" height="100%" fill="url(#sl-hex)"/>
+    </svg>
+  </div>
+  <div class="splash-stage">
+    <div class="splash-square-path"></div>
+    <div class="splash-ring r1"></div>
+    <div class="splash-ring r2"></div>
+    <div class="splash-ring r3"></div>
+    <div class="splash-shield">
+      <svg width="160" height="160"><use href="#sl-logo"/></svg>
+    </div>
+    <div class="splash-scan">
+      <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="#3b9eff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="7"/>
+        <line x1="21" y1="21" x2="16.5" y2="16.5"/>
+      </svg>
+    </div>
+  </div>
+  <div class="splash-title"><span class="a">Secure</span><span class="b">Lens</span></div>
+  <div class="splash-tag">Insider Threat Detection</div>
+  <div class="splash-status">Initialising scan engine ...</div>
+</div>
+
+<!-- Login screen. Two columns on wide screens, single column on mobile. -->
+<div id="login-screen">
+  <div class="login-hero">
+    <div class="login-hero-art">
+      <svg viewBox="0 0 600 600" xmlns="http://www.w3.org/2000/svg"><use href="#sl-login-hero"/></svg>
+    </div>
+    <div class="login-hero-copy">
+      <div class="login-hero-eyebrow">SecureLens Console</div>
+      <div class="login-hero-headline">Spot insider threats before they <span class="b">spread.</span></div>
+      <div class="login-hero-tag">
+        Behavioural risk scoring across 21 employee signals, with SHAP explanations and a full audit trail for every prediction. Sign in to continue your investigation.
+      </div>
+    </div>
+  </div>
+
+  <div class="login-card">
+    <div class="login-logo-row">
+      <div class="login-logo-mark">
+        <svg width="50" height="50"><use href="#sl-logo"/></svg>
+      </div>
+      <div class="login-logo-text">
+        <div class="login-logo-name"><span>Secure</span><span class="b">Lens</span></div>
+        <div class="login-logo-sub">Insider Threat Console</div>
+      </div>
+    </div>
+
+    <div class="login-title">Welcome back</div>
+    <div class="login-sub">Sign in to access the analyst dashboard.</div>
+
+    <form id="login-form" autocomplete="off">
+      <div class="login-field">
+        <label class="login-label" for="li-username">Username</label>
+        <div class="login-input-wrap">
+          <i data-lucide="user"></i>
+          <input class="login-input" id="li-username" type="text" autocomplete="username" required value="admin"/>
+        </div>
+      </div>
+      <div class="login-field">
+        <label class="login-label" for="li-password">Password</label>
+        <div class="login-input-wrap">
+          <i data-lucide="lock"></i>
+          <input class="login-input" id="li-password" type="password" autocomplete="current-password" required/>
+        </div>
+      </div>
+
+      <button type="submit" class="login-btn" id="login-btn">
+        <span>Sign In</span>
+        <i data-lucide="arrow-right"></i>
+      </button>
+
+      <div class="login-error" id="login-error">
+        <i data-lucide="alert-circle"></i>
+        <span id="login-error-text">Invalid credentials.</span>
+      </div>
+
+      <div class="login-hint">
+        <i data-lucide="info"></i>
+        <span>Default credentials on first run: <strong style="color:var(--bright)">admin / admin123</strong>. Update them in the local database for production use.</span>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Main application shell. -->
+<div id="app">
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-mark"><svg width="38" height="38"><use href="#sl-logo"/></svg></div>
+      <div class="logo-name"><span>Secure</span><span class="b">Lens</span></div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-label">General</div>
+      <div class="nav-item active" data-tab="tab-dashboard">
+        <i data-lucide="layout-dashboard"></i> Dashboard
+      </div>
+      <div class="nav-item" data-tab="tab-single">
+        <i data-lucide="search"></i> Single Analysis
+      </div>
+      <div class="nav-item" data-tab="tab-batch">
+        <i data-lucide="upload-cloud"></i> Batch Upload
+      </div>
+    </div>
+
+    <div class="sidebar-divider"></div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-label">Operations</div>
+      <div class="nav-item" data-tab="tab-history" title="Open cases needing review">
+        <i data-lucide="clipboard-list"></i> History
+        <span class="nav-badge" id="badge-malicious" style="display:none">0</span>
+      </div>
+      <div class="nav-item" data-tab="tab-compare">
+        <i data-lucide="bar-chart-3"></i> Models
+      </div>
+    </div>
+
+    <div class="sidebar-divider"></div>
+
+    <div class="sidebar-section">
+      <div class="threshold-section">
+        <div class="threshold-header">
+          <div class="threshold-title">Threshold</div>
+          <div class="threshold-val" id="threshold-display">0.50</div>
+        </div>
+        <input type="range" id="threshold-slider" min="0.1" max="0.9" step="0.05" value="0.5"/>
+      </div>
+    </div>
+
+    <div class="sidebar-bottom">
+      <div class="user-card">
+        <div class="avatar" id="user-avatar">A</div>
+        <div class="user-info" id="user-info-trigger" title="View profile">
+          <div class="user-name" id="user-name">Analyst</div>
+          <div class="user-role" id="user-role">Security Ops</div>
+        </div>
+        <div class="signout-btn" id="signout-btn" title="Sign out">
+          <i data-lucide="log-out"></i>
+        </div>
+        <div class="profile-pop" id="profile-pop">
+          <div class="profile-pop-row">
+            <span class="profile-pop-key">USER</span>
+            <span class="profile-pop-val" id="pp-username">-</span>
+          </div>
+          <div class="profile-pop-row">
+            <span class="profile-pop-key">ROLE</span>
+            <span class="profile-pop-val" id="pp-role">-</span>
+          </div>
+          <div class="profile-pop-row">
+            <span class="profile-pop-key">SESSION</span>
+            <span class="profile-pop-val" id="pp-session">Active</span>
+          </div>
+          <div class="profile-pop-row">
+            <span class="profile-pop-key">SERVER</span>
+            <span class="profile-pop-val" id="pp-server">Online</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-tabs">
+        <div class="topbar-tab active" data-toptab="dashboard"><i data-lucide="activity"></i> Dashboard</div>
+        <div class="topbar-tab" data-toptab="analysis"><i data-lucide="search"></i> Analysis</div>
+        <div class="topbar-tab" data-toptab="history"><i data-lucide="clipboard-list"></i> History</div>
+        <div class="topbar-tab" data-toptab="models"><i data-lucide="bar-chart-3"></i> Models</div>
+      </div>
+      <div style="flex:1"></div>
+      <div class="topbar-badges">
+        <div class="status-badge live" id="system-status">SYSTEM ACTIVE</div>
+        <div class="status-badge model" id="model-badge">RF · 96.96%</div>
+      </div>
+      <div class="topbar-icon-btn" id="notif-btn" title="Notifications">
+        <i data-lucide="bell"></i>
+        <div class="notif-dot" id="notif-dot"></div>
+        <div class="notif-panel" id="notif-panel">
+          <div class="notif-panel-header">
+            <div class="notif-panel-title">Notifications</div>
+            <div class="notif-panel-clear" id="notif-clear-btn">Mark all read</div>
+          </div>
+          <div id="notif-list">
+            <div class="notif-empty">No unread notifications</div>
+          </div>
+        </div>
+      </div>
+      <div class="topbar-icon-btn" id="search-btn" title="Search">
+        <i data-lucide="search"></i>
+      </div>
+    </div>
+
+    <!-- Search overlay -->
+    <div class="search-overlay" id="search-overlay">
+      <div class="search-box">
+        <div class="search-input-row">
+          <i data-lucide="search"></i>
+          <input class="search-input-field" id="search-input" type="text" placeholder="Search audit history by department, analyst, or label …" autocomplete="off"/>
+          <span class="search-close-btn" id="search-close-btn">ESC</span>
+        </div>
+        <div class="search-results" id="search-results">
+          <div class="search-hint">Start typing to search across all audit log entries.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="content">
+
+      <!-- DASHBOARD TAB -->
+      <div id="tab-dashboard" class="tab-content active">
+        <div class="page-header">
+          <div>
+            <div class="page-title">Threat Intelligence Dashboard</div>
+            <div class="page-sub">Real time overview of analysed records and flagged behaviour</div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="navigateTab('tab-single')">
+            <i data-lucide="plus"></i> New Analysis
+          </button>
+        </div>
+
+        <!-- KPI grid (clickable to enlarge) -->
+        <div class="kpi-grid">
+          <div class="kpi-card blue clickable" data-expand="kpi-total">
+            <div class="kpi-header">
+              <div class="kpi-label">Total Analysed</div>
+              <div class="kpi-icon blue"><i data-lucide="eye"></i></div>
+            </div>
+            <div class="kpi-value" id="kpi-total" data-counter="0">0</div>
+            <div class="kpi-trend">All sessions logged</div>
+          </div>
+          <div class="kpi-card red clickable" data-expand="kpi-malicious">
+            <div class="kpi-header">
+              <div class="kpi-label">Flagged Malicious</div>
+              <div class="kpi-icon red"><i data-lucide="alert-triangle"></i></div>
+            </div>
+            <div class="kpi-value red" id="kpi-malicious" data-counter="0">0</div>
+            <div class="kpi-trend"><span class="up" id="kpi-mal-pct">0%</span>&nbsp;of analysed</div>
+          </div>
+          <div class="kpi-card green clickable" data-expand="kpi-normal">
+            <div class="kpi-header">
+              <div class="kpi-label">Cleared Normal</div>
+              <div class="kpi-icon green"><i data-lucide="check-circle-2"></i></div>
+            </div>
+            <div class="kpi-value green" id="kpi-normal" data-counter="0">0</div>
+            <div class="kpi-trend">No threat detected</div>
+          </div>
+          <div class="kpi-card amber clickable" data-expand="kpi-cases">
+            <div class="kpi-header">
+              <div class="kpi-label">Open Cases</div>
+              <div class="kpi-icon amber"><i data-lucide="folder-open"></i></div>
+            </div>
+            <div class="kpi-value amber" id="kpi-cases" data-counter="0">0</div>
+            <div class="kpi-trend">Awaiting review</div>
+          </div>
+        </div>
+
+        <!-- Charts row -->
+        <div class="charts-row">
+          <div class="panel clickable" data-expand="risk-bars-panel">
+            <div class="panel-header">
+              <div class="panel-title"><div class="dot dot-red"></div>Issues By Risk Level</div>
+              <div class="panel-action"><i data-lucide="maximize-2"></i></div>
+            </div>
+            <div style="margin-bottom:16px">
+              <div class="kpi-value" id="total-issues-big" data-counter="0">0</div>
+              <div style="font-size:11px;color:var(--text);font-family:var(--font-mono);margin-top:4px">total records evaluated</div>
+            </div>
+            <div class="risk-bars" id="risk-bars">
+              <div class="risk-bar-row"><div class="risk-bar-label">Critical</div><div class="risk-bar-track"><div class="risk-bar-fill critical" style="width:0%" id="bar-critical"></div></div><div class="risk-bar-count" id="cnt-critical">0</div></div>
+              <div class="risk-bar-row"><div class="risk-bar-label">High</div><div class="risk-bar-track"><div class="risk-bar-fill high" style="width:0%" id="bar-high"></div></div><div class="risk-bar-count" id="cnt-high">0</div></div>
+              <div class="risk-bar-row"><div class="risk-bar-label">Medium</div><div class="risk-bar-track"><div class="risk-bar-fill medium" style="width:0%" id="bar-medium"></div></div><div class="risk-bar-count" id="cnt-medium">0</div></div>
+              <div class="risk-bar-row"><div class="risk-bar-label">Low</div><div class="risk-bar-track"><div class="risk-bar-fill low" style="width:0%" id="bar-low"></div></div><div class="risk-bar-count" id="cnt-low">0</div></div>
+            </div>
+          </div>
+
+          <div class="panel clickable" data-expand="recent-panel">
+            <div class="panel-header">
+              <div class="panel-title"><div class="dot dot-amber"></div>Recent Predictions</div>
+              <div class="panel-action"><i data-lucide="maximize-2"></i></div>
+            </div>
+            <div class="table-wrap">
+              <table class="alerts-table">
+                <thead>
+                  <tr>
+                    <th>Department</th>
+                    <th>Position</th>
+                    <th>Label</th>
+                    <th>Confidence</th>
+                  </tr>
+                </thead>
+                <tbody id="recent-tbody">
+                  <tr><td colspan="4" style="color:var(--muted);text-align:center;padding:24px;font-family:var(--font-mono);font-size:11px">No predictions yet. Run an analysis.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:16px">
+            <div class="panel clickable" data-expand="risk-score-panel" style="flex:1">
+              <div class="panel-header">
+                <div class="panel-title"><div class="dot dot-blue"></div>Risk Score</div>
+              </div>
+              <div class="risk-score-wrap">
+                <div style="position:relative;width:140px;height:140px">
+                  <svg class="ring-svg" width="140" height="140" viewBox="0 0 140 140">
+                    <circle class="ring-track" cx="70" cy="70" r="58"/>
+                    <circle class="ring-fill grade-c" id="risk-ring" cx="70" cy="70" r="58"/>
+                  </svg>
+                  <div class="ring-center">
+                    <div class="ring-grade grade-c" id="risk-grade">-</div>
+                    <div class="ring-sub">RISK SCORE</div>
+                  </div>
+                </div>
+                <div class="risk-desc" id="risk-desc">Run analyses to<br>generate a risk score</div>
+                <div class="risk-scale">
+                  <div class="scale-item" id="scale-A" title="Grade A: Low threat"></div>
+                  <div class="scale-item" id="scale-B" title="Grade B: Moderate-low"></div>
+                  <div class="scale-item active amber" id="scale-C" title="Grade C: Moderate"></div>
+                  <div class="scale-item" id="scale-D" title="Grade D: High threat"></div>
+                  <div class="scale-item" id="scale-F" title="Grade F: Critical threat"></div>
+                </div>
+                <div style="font-size:9px;color:var(--muted);font-family:var(--font-mono);margin-top:8px;letter-spacing:0.12em">A · B · C · D · F</div>
+              </div>
+            </div>
+
+            <div class="panel clickable" data-expand="donut-panel" style="flex:1">
+              <div class="panel-header">
+                <div class="panel-title"><div class="dot dot-purple"></div>Classification</div>
+              </div>
+              <div class="donut-wrap">
+                <svg class="donut-svg" width="84" height="84" viewBox="0 0 84 84">
+                  <circle cx="42" cy="42" r="32" fill="none" stroke="rgba(80,120,180,0.2)" stroke-width="11"/>
+                  <circle id="donut-mal" cx="42" cy="42" r="32" fill="none" stroke="var(--red)" stroke-width="11"
+                    stroke-dasharray="0 201" stroke-linecap="round"
+                    transform="rotate(-90 42 42)" style="transition:stroke-dasharray 0.8s ease"/>
+                  <circle id="donut-norm" cx="42" cy="42" r="32" fill="none" stroke="var(--green)" stroke-width="11"
+                    stroke-dasharray="0 201" stroke-linecap="round"
+                    transform="rotate(-90 42 42)" style="transition:stroke-dasharray 0.8s ease 0.2s"/>
+                </svg>
+                <div class="donut-legend">
+                  <div class="legend-item">
+                    <div class="legend-dot" style="background:var(--red);color:var(--red)"></div>
+                    <div class="legend-label">Malicious</div>
+                    <div class="legend-pct" id="donut-mal-pct">0%</div>
+                  </div>
+                  <div class="legend-item">
+                    <div class="legend-dot" style="background:var(--green);color:var(--green)"></div>
+                    <div class="legend-label">Normal</div>
+                    <div class="legend-pct" id="donut-norm-pct">0%</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bottom row -->
+        <div class="two-col">
+          <div class="panel clickable" data-expand="severity-panel">
+            <div class="panel-header">
+              <div class="panel-title"><div class="dot dot-red"></div>Alerts By Severity</div>
+              <div class="panel-action"><i data-lucide="maximize-2"></i></div>
+            </div>
+            <div id="sev-list">
+              <div class="sev-row">
+                <div class="sev-icon critical"><i data-lucide="flame"></i></div>
+                <div class="sev-name">Critical</div>
+                <div class="sev-count" id="sev-critical">0</div>
+              </div>
+              <div class="sev-row">
+                <div class="sev-icon high"><i data-lucide="alert-triangle"></i></div>
+                <div class="sev-name">High</div>
+                <div class="sev-count" id="sev-high">0</div>
+              </div>
+              <div class="sev-row">
+                <div class="sev-icon medium"><i data-lucide="alert-circle"></i></div>
+                <div class="sev-name">Medium</div>
+                <div class="sev-count" id="sev-medium">0</div>
+              </div>
+              <div class="sev-row">
+                <div class="sev-icon low"><i data-lucide="shield-check"></i></div>
+                <div class="sev-name">Low</div>
+                <div class="sev-count" id="sev-low">0</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel clickable" data-expand="cm-panel">
+            <div class="panel-header">
+              <div class="panel-title"><div class="dot dot-blue"></div>Model Performance</div>
+              <div class="panel-action"><i data-lucide="maximize-2"></i></div>
+            </div>
+            <div class="cm-grid">
+              <div class="cm-cell tp"><div class="cm-val" data-counter="1048">0</div><div class="cm-label">True Positive</div></div>
+              <div class="cm-cell tn"><div class="cm-val" data-counter="21953">0</div><div class="cm-label">True Negative</div></div>
+              <div class="cm-cell fp"><div class="cm-val" data-counter="493">0</div><div class="cm-label">False Positive</div></div>
+              <div class="cm-cell fn"><div class="cm-val" data-counter="229">0</div><div class="cm-label">False Negative</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Threat timeline -->
+        <div class="panel full-width clickable" data-expand="timeline-panel">
+          <div class="panel-header">
+            <div class="panel-title"><div class="dot dot-amber"></div>Threat Timeline · Last 14 Days</div>
+            <div class="panel-action" style="display:flex;align-items:center;gap:10px">
+              <span id="timeline-summary" style="font-family:var(--font-mono);font-size:11px;color:var(--text)">-</span>
+              <i data-lucide="maximize-2"></i>
+            </div>
+          </div>
+          <svg id="timeline-chart" viewBox="0 0 800 230" preserveAspectRatio="xMidYMid meet"
+               style="width:100%;height:230px;display:block">
+            <g id="timeline-bars"></g>
+            <g id="timeline-labels"></g>
+          </svg>
+          <div style="display:flex;gap:18px;justify-content:center;margin-top:8px;font-size:11px;color:var(--text2)">
+            <span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;background:var(--red);border-radius:2px"></span>Malicious</span>
+            <span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;background:var(--green);border-radius:2px"></span>Normal</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- SINGLE ANALYSIS TAB -->
+      <div id="tab-single" class="tab-content">
+        <div class="page-header">
+          <div>
+            <div class="page-title">Single Analysis</div>
+            <div class="page-sub">Classify one employee behaviour record</div>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="resetForm()">
+            <i data-lucide="rotate-ccw"></i> Reset Form
+          </button>
+        </div>
+
+        <div class="panel full-width">
+          <div class="panel-header">
+            <div class="panel-title"><div class="dot dot-blue"></div>Employee Profile</div>
+          </div>
+          <div class="form-grid" id="profile-form">
+            <div class="form-group">
+              <label class="form-label">Department</label>
+              <select id="f-dept"></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Campus</label>
+              <select id="f-campus"></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Position</label>
+              <select id="f-position"></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Origin Country</label>
+              <select id="f-country"></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Seniority (Years)</label>
+              <input type="number" id="f-seniority" value="5" min="0" max="50"/>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Classification Level (1 to 5)</label>
+              <input type="number" id="f-clearance" value="2" min="1" max="5"/>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Profile Flags</label>
+              <div style="display:flex;flex-direction:column;gap:6px;padding-top:2px">
+                <label class="checkbox-row"><input type="checkbox" id="f-contractor"/><span>Contractor</span></label>
+                <label class="checkbox-row"><input type="checkbox" id="f-foreign"/><span>Foreign Citizenship</span></label>
+                <label class="checkbox-row"><input type="checkbox" id="f-criminal"/><span>Criminal Record</span></label>
+                <label class="checkbox-row"><input type="checkbox" id="f-medical"/><span>Medical History</span></label>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Travel and Access Flags</label>
+              <div style="display:flex;flex-direction:column;gap:6px;padding-top:2px">
+                <label class="checkbox-row"><input type="checkbox" id="f-abroad"/><span>Currently Abroad</span></label>
+                <label class="checkbox-row"><input type="checkbox" id="f-late"/><span>Late Exit Flag</span></label>
+                <label class="checkbox-row"><input type="checkbox" id="f-weekend"/><span>Weekend Entry</span></label>
+              </div>
+            </div>
+
+            <div class="section-sep">
+              <div class="section-sep-label">Behavioural Indicators</div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Total Pages Printed</label>
+              <input type="number" id="f-printed" value="0" min="0"/>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Off Hours Pages Printed</label>
+              <input type="number" id="f-offhours" value="0" min="0"/>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Files Burned to Media</label>
+              <input type="number" id="f-burned" value="0" min="0"/>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Burned From Other Accounts</label>
+              <input type="number" id="f-burnedother" value="0" min="0"/>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Trip Day Number</label>
+              <input type="number" id="f-tripday" value="0" min="0"/>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Hostility Country Level (0 to 5)</label>
+              <input type="number" id="f-hostility" value="0" min="0" max="5"/>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Number of Entries</label>
+              <input type="number" id="f-entries" value="1" min="0"/>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Unique Campuses Visited</label>
+              <input type="number" id="f-campuses" value="1" min="0"/>
+            </div>
+          </div>
+
+          <div style="margin-top:22px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+            <button class="btn btn-primary" id="analyse-btn" onclick="runSingleAnalysis()">
+              <i data-lucide="search"></i> Analyse Employee
+            </button>
+            <div style="display:flex;gap:4px;background:rgba(8,14,26,0.7);border:1px solid var(--border);border-radius:9px;padding:3px">
+              <button class="btn btn-ghost btn-sm active" id="single-toggle-rf" onclick="setActiveModel('rf')" title="Random Forest — primary model with SHAP explanations">
+                <i data-lucide="git-branch"></i> RF
+              </button>
+              <button class="btn btn-ghost btn-sm" id="single-toggle-lr" onclick="setActiveModel('lr')" title="Logistic Regression — comparison baseline with coefficient explanations">
+                <i data-lucide="trending-up"></i> LR
+              </button>
+            </div>
+            <div style="font-size:11px;color:var(--text);font-family:var(--font-mono)">
+              Threshold: <span id="threshold-inline">0.50</span>
+            </div>
+          </div>
+        </div>
+
+        <div id="result-panel">
+          <div id="verdict-banner" class="verdict-banner">
+            <div>
+              <div id="verdict-label" class="verdict-label"></div>
+              <div id="verdict-sub" class="verdict-sub"></div>
+            </div>
+            <div class="verdict-right">
+              <div id="conf-num" class="conf-num"></div>
+              <div class="conf-label">CONFIDENCE</div>
+            </div>
+          </div>
+
+          <div class="metrics-row">
+            <div class="metric-card">
+              <div class="metric-val" id="m-normal">-</div>
+              <div class="metric-label">Prob. Normal</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-val" id="m-malicious">-</div>
+              <div class="metric-label">Prob. Malicious</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-val" id="m-risk">-</div>
+              <div class="metric-label">Risk Level</div>
+            </div>
+          </div>
+
+          <div class="two-col">
+            <div class="panel">
+              <div class="panel-header">
+                <div class="panel-title"><div class="dot dot-amber"></div><span id="feature-panel-title">Feature Contributions (SHAP)</span></div>
+              </div>
+              <div id="shap-chart" class="shap-chart"></div>
+            </div>
+            <div class="panel">
+              <div class="panel-header">
+                <div class="panel-title"><div class="dot dot-green"></div>Analyst Explanation</div>
+              </div>
+              <div id="explanation-box" class="explanation-box"></div>
+              <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
+                <button class="btn btn-ghost btn-sm" onclick="navigateTab('tab-history')">
+                  <i data-lucide="clipboard-list"></i> View in History
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Risk score breakdown -->
+          <div class="panel full-width">
+            <div class="panel-header">
+              <div class="panel-title"><div class="dot dot-red"></div>Risk Score Breakdown</div>
+              <div class="panel-action" id="risk-breakdown-total" style="font-family:var(--font-mono);font-size:11px;color:var(--text)">-</div>
+            </div>
+            <div id="risk-breakdown-list" style="display:flex;flex-direction:column;gap:10px;padding:8px 0"></div>
+            <div style="margin-top:6px;padding:10px 12px;background:rgba(255,255,255,0.02);border-radius:6px;font-size:11px;color:var(--text2)">
+              Each row shows how much that behavioural factor pushed the risk score
+              up (red) or down (green). <span id="feature-panel-note">Bars are scaled to the largest absolute SHAP value.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BATCH UPLOAD TAB -->
+      <div id="tab-batch" class="tab-content">
+        <div class="page-header">
+          <div>
+            <div class="page-title">Batch Upload</div>
+            <div class="page-sub">Upload a CSV. Get a full risk leaderboard.</div>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="resetBatchForm()">
+            <i data-lucide="rotate-ccw"></i> Reset
+          </button>
+        </div>
+
+        <div class="panel full-width">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px 0">
+            <div style="font-size:11px;color:var(--text);font-family:var(--font-mono)">Model for batch scoring:</div>
+            <div style="display:flex;gap:4px;background:rgba(8,14,26,0.7);border:1px solid var(--border);border-radius:9px;padding:3px">
+              <button class="btn btn-ghost btn-sm active" id="batch-toggle-rf" onclick="setActiveModel('rf')" title="Random Forest">
+                <i data-lucide="git-branch"></i> RF
+              </button>
+              <button class="btn btn-ghost btn-sm" id="batch-toggle-lr" onclick="setActiveModel('lr')" title="Logistic Regression">
+                <i data-lucide="trending-up"></i> LR
+              </button>
+            </div>
+          </div>
+          <div class="upload-zone" id="upload-zone" onclick="document.getElementById('batch-file').click()">
+            <input type="file" id="batch-file" accept=".csv" style="display:none" onchange="handleBatchUpload(this)"/>
+            <svg class="upload-art" viewBox="0 0 240 160"><use href="#sl-empty-batch"/></svg>
+            <div class="upload-text">Drop your CSV here or click to browse</div>
+            <div class="upload-hint">Must contain all 21 feature columns. Threshold: <span id="batch-threshold-display">0.50</span></div>
+          </div>
+        </div>
+
+        <div id="batch-loading" style="display:none;text-align:center;padding:48px;color:var(--muted)">
+          <div class="spinner" style="width:24px;height:24px;margin:0 auto 12px"></div>
+          <div style="font-family:var(--font-mono);font-size:12px">Processing records ...</div>
+        </div>
+
+        <div id="batch-results" style="display:none">
+          <div class="summary-row">
+            <div class="sum-card"><div class="sum-num" id="b-total">0</div><div class="sum-label">Total Records</div></div>
+            <div class="sum-card"><div class="sum-num" style="color:var(--red)" id="b-malicious">0</div><div class="sum-label">Flagged Malicious</div></div>
+            <div class="sum-card"><div class="sum-num" style="color:var(--green)" id="b-normal">0</div><div class="sum-label">Cleared Normal</div></div>
+          </div>
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title"><div class="dot dot-red"></div>Risk Leaderboard</div>
+              <div class="panel-action">Sorted by threat probability</div>
+            </div>
+            <div class="table-wrap" style="max-height:480px;overflow-y:auto">
+              <table class="leaderboard">
+                <thead>
+                  <tr>
+                    <th>#</th><th>Row</th><th>Department</th><th>Position</th><th>Campus</th>
+                    <th>Label</th><th>Risk</th><th>Threat Probability</th>
+                  </tr>
+                </thead>
+                <tbody id="leaderboard-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- HISTORY TAB -->
+      <div id="tab-history" class="tab-content">
+        <div class="page-header">
+          <div>
+            <div class="page-title">Audit History</div>
+            <div class="page-sub">All logged predictions with case management</div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-ghost btn-sm" onclick="clearAllOpenCases()" title="Mark every open/investigating case as cleared">
+              <i data-lucide="check-check"></i> Mark All Cleared
+            </button>
+            <button class="btn btn-ghost btn-sm" onclick="exportHistoryCSV()">
+              <i data-lucide="download"></i> Export CSV
+            </button>
+            <button class="btn btn-ghost btn-sm" onclick="loadHistory()">
+              <i data-lucide="refresh-cw"></i> Refresh
+            </button>
+          </div>
+        </div>
+
+        <div class="panel full-width">
+          <div class="panel-header">
+            <div class="panel-title"><div class="dot dot-blue"></div>Filters</div>
+          </div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+            <select id="history-label-filter" onchange="loadHistory()" style="max-width:200px">
+              <option value="">All labels</option>
+              <option value="MALICIOUS">Malicious only</option>
+              <option value="NORMAL">Normal only</option>
+            </select>
+            <select id="history-status-filter" onchange="loadHistory()" style="max-width:200px">
+              <option value="">All statuses</option>
+              <option value="open">Open</option>
+              <option value="investigating">Investigating</option>
+              <option value="cleared">Cleared</option>
+              <option value="escalated">Escalated</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="panel full-width">
+          <div class="panel-header">
+            <div class="panel-title"><div class="dot dot-amber"></div>Predictions Log</div>
+            <div class="panel-action" id="history-count">0 entries</div>
+          </div>
+
+          <!-- Bulk action bar (shown when rows are selected) -->
+          <div class="bulk-bar" id="bulk-bar">
+            <span class="bulk-count" id="bulk-count">0</span> row(s) selected
+            <select id="bulk-status-select">
+              <option value="">Mark as ...</option>
+              <option value="open">Open</option>
+              <option value="investigating">Investigating</option>
+              <option value="cleared">Cleared</option>
+              <option value="escalated">Escalated</option>
+            </select>
+            <button class="btn btn-primary btn-sm" onclick="applyBulkStatus()">Apply</button>
+            <button class="btn-delete-icon" onclick="deleteSelected()">
+              <i data-lucide="trash-2"></i> Delete
+            </button>
+            <button class="btn btn-ghost btn-sm" onclick="clearSelection()" style="margin-left:auto">Cancel</button>
+          </div>
+
+          <div class="table-wrap" style="max-height:520px;overflow-y:auto">
+            <table class="alerts-table" id="history-table">
+              <thead>
+                <tr>
+                  <th style="width:32px"><input type="checkbox" class="row-check" id="select-all-cb" title="Select all" onchange="toggleSelectAll(this)"/></th>
+                  <th>Time (UTC+2)</th>
+                  <th>Analyst</th>
+                  <th>Source</th>
+                  <th>Model</th>
+                  <th>Department</th>
+                  <th>Position</th>
+                  <th>Label</th>
+                  <th>Confidence</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="history-tbody">
+                <tr><td colspan="11">
+                  <div class="empty-state">
+                    <svg class="empty-state-art" viewBox="0 0 240 180"><use href="#sl-empty-history"/></svg>
+                    <div class="empty-state-title">Loading audit history</div>
+                    <div class="empty-state-sub">Fetching predictions from the local audit store ...</div>
+                  </div>
+                </td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODELS TAB -->
+      <div id="tab-compare" class="tab-content">
+        <div class="page-header">
+          <div>
+            <div class="page-title">Model Comparison</div>
+            <div class="page-sub">Random Forest versus Logistic Regression</div>
+          </div>
+        </div>
+
+        <div class="two-col" style="margin-bottom:16px">
+          <div class="model-card rf selected" id="model-card-rf" style="cursor:pointer" onclick="setActiveModel('rf')">
+            <div class="model-icon rf"><i data-lucide="git-branch"></i></div>
+            <div>
+              <div class="model-name">Random Forest</div>
+              <div class="model-desc">200 estimators · Primary model</div>
+            </div>
+            <div class="model-badge"><span class="tag normal" id="model-badge-rf">SELECTED</span></div>
+          </div>
+          <div class="model-card lr" id="model-card-lr" style="cursor:pointer" onclick="setActiveModel('lr')" title="Logistic Regression trained alongside the primary model as a comparison baseline. Its metrics are shown in the table below.">
+            <div class="model-icon lr"><i data-lucide="trending-up"></i></div>
+            <div>
+              <div class="model-name">Logistic Regression</div>
+              <div class="model-desc">Linear baseline · Comparison model</div>
+            </div>
+            <div class="model-badge"><span class="tag" id="model-badge-lr" style="background:rgba(59,158,255,0.12);color:var(--blue);border:1px solid rgba(59,158,255,0.3)">BASELINE</span></div>
+          </div>
+        </div>
+
+        <div class="panel full-width">
+          <div class="panel-header">
+            <div class="panel-title"><div class="dot dot-blue"></div>Metrics Breakdown</div>
+          </div>
+          <div id="compare-loading" style="color:var(--muted);font-family:var(--font-mono);font-size:12px;padding:20px 0">
+            <div class="spinner" style="display:inline-block;margin-right:8px"></div> Loading model data ...
+          </div>
+          <div class="table-wrap">
+            <table class="compare-table" id="compare-table" style="display:none">
+              <thead>
+                <tr>
+                  <th>Metric</th>
+                  <th>Random Forest</th>
+                  <th>Logistic Regression</th>
+                  <th>Active</th>
+                </tr>
+              </thead>
+              <tbody id="compare-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel full-width" id="compare-conclusion" style="display:none">
+          <div class="panel-header">
+            <div class="panel-title"><div class="dot dot-green"></div>Model Selection Rationale</div>
+          </div>
+          <div class="explanation-box" id="compare-text"></div>
+        </div>
+
+        <div class="panel full-width">
+          <div class="panel-header">
+            <div class="panel-title"><div class="dot dot-amber"></div>Confusion Matrix · <span id="cm-model-name">Random Forest</span></div>
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-ghost btn-sm" id="cm-btn-rf" onclick="setActiveModel('rf')">Random Forest</button>
+              <button class="btn btn-ghost btn-sm" id="cm-btn-lr" onclick="setActiveModel('lr')">Logistic Regression</button>
+            </div>
+          </div>
+          <div class="cm-grid">
+            <div class="cm-cell tp"><div class="cm-val" id="cm-tp">-</div><div class="cm-label">True Positive - Caught</div></div>
+            <div class="cm-cell tn"><div class="cm-val" id="cm-tn">-</div><div class="cm-label">True Negative - Correct</div></div>
+            <div class="cm-cell fp"><div class="cm-val" id="cm-fp">-</div><div class="cm-label">False Positive - False Alarm</div></div>
+            <div class="cm-cell fn"><div class="cm-val" id="cm-fn">-</div><div class="cm-label">False Negative - Missed</div></div>
+          </div>
+          <div style="margin-top:12px;padding:12px;background:rgba(255,255,255,0.02);border-radius:8px;font-size:11.5px;color:var(--text2);line-height:1.6">
+            <strong style="color:var(--bright)">How to read this:</strong>
+            <span id="cm-summary">-</span>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /content -->
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<!-- Expanded panel overlay (rendered by JS) -->
+<div class="panel-overlay" id="panel-overlay" onclick="closeExpandedPanel(event)">
+  <div class="panel-expanded" id="panel-expanded" onclick="event.stopPropagation()">
+    <div class="panel-expanded-header">
+      <div class="panel-expanded-title" id="expanded-title"></div>
+      <button class="back-btn" onclick="closeExpandedPanel()">
+        <i data-lucide="arrow-left"></i> Back
+      </button>
+    </div>
+    <div id="expanded-body"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ============================================================
+// SECURELENS CLIENT
+// ============================================================
+
+const TOKEN_KEY = 'securelens_token'; // persists login across page reloads
+
+let authToken      = localStorage.getItem(TOKEN_KEY) || null;
+let currentUser    = null;
+let recentPredictions = [];
+let riskCounts     = { critical: 0, high: 0, medium: 0, low: 0 };
+let sessionTotal     = 0;
+let sessionMalicious = 0;
+let sessionNormal    = 0;
+let openCases        = 0;
+let selectedModel    = 'rf';  // 'rf' | 'lr' — shared across Single and Batch tabs
+
+function selectModel(m) {
+  selectedModel = m;
+  // Sync all toggle buttons on both tabs.
+  ['single-toggle-rf', 'batch-toggle-rf'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('active', m === 'rf');
+  });
+  ['single-toggle-lr', 'batch-toggle-lr'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('active', m === 'lr');
+  });
+}
+
+function setActiveModel(m) {
+  // Unified entry-point: syncs Single/Batch toggles AND the Models tab cards/CM.
+  selectModel(m);
+  const modelKey = m === 'lr' ? 'logistic_regression' : 'random_forest';
+  renderConfusionMatrix(modelKey);
+
+  // Refresh the top-right header badge (e.g. "LR · 85.53%").
+  const badge = document.getElementById('model-badge');
+  if (badge) {
+    const fallback = m === 'lr' ? 85.53 : 96.96;
+    const acc = (comparisonData && comparisonData[modelKey] && comparisonData[modelKey].accuracy != null)
+      ? comparisonData[modelKey].accuracy * 100
+      : fallback;
+    badge.textContent = `${m === 'lr' ? 'LR' : 'RF'} · ${acc.toFixed(2)}%`;
+  }
+}
+
+// Maps panel IDs to their modal titles.
+const expandableTitles = {
+  'kpi-total':       'Total Records Analysed',
+  'kpi-malicious':   'Flagged Malicious Records',
+  'kpi-normal':      'Cleared Normal Records',
+  'kpi-cases':       'Open Cases',
+  'risk-bars-panel': 'Issues By Risk Level',
+  'recent-panel':    'Recent Predictions',
+  'risk-score-panel':'Risk Score',
+  'donut-panel':     'Classification Breakdown',
+  'severity-panel':  'Alerts By Severity',
+  'cm-panel':        'Model Performance',
+  'timeline-panel':  'Threat Timeline · Last 14 Days',
+};
+
+// ============================================================
+// TUNNEL CANVAS BACKGROUND
+// ============================================================
+function startTunnel() {
+  // Build the looping star tunnel that lives behind the whole app.
+  const canvas = document.getElementById('tunnel-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+
+  function resize() {
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  resize();
+  window.addEventListener('resize', () => { resize(); seedLines(); });
+
+  const NUM_LINES = 200;
+  let lines = [];
+  let speed = 1.6;
+  let rotation = 0;
+
+  function makeLine() {
+    return {
+      z: Math.random() * canvas.width,
+      angle: Math.random() * Math.PI * 2,
+      radius: Math.random() * (canvas.width / 4) + (canvas.width / 8),
+    };
+  }
+
+  function seedLines() {
+    lines = [];
+    for (let i = 0; i < NUM_LINES; i++) lines.push(makeLine());
+  }
+
+  function step() {
+    ctx.fillStyle = 'rgba(5, 8, 16, 0.22)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    rotation += 0.0008;
+
+    for (const line of lines) {
+      line.z -= speed;
+      if (line.z < 1) Object.assign(line, makeLine());
+
+      const scale     = canvas.width / line.z;
+      const prevScale = canvas.width / (line.z + speed * 20);
+      const x  = Math.cos(line.angle + rotation) * line.radius * scale     + canvas.width / 2;
+      const y  = Math.sin(line.angle + rotation) * line.radius * scale     + canvas.height / 2;
+      const px = Math.cos(line.angle + rotation) * line.radius * prevScale + canvas.width / 2;
+      const py = Math.sin(line.angle + rotation) * line.radius * prevScale + canvas.height / 2;
+
+      const brightness = 1 - line.z / canvas.width;
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.lineTo(x, y);
+      ctx.strokeStyle = `rgba(140, 190, 255, ${brightness * 0.55})`;
+      ctx.lineWidth = scale * 1.2;
+      ctx.stroke();
+    }
+    requestAnimationFrame(step);
+  }
+
+  seedLines();
+  step();
+}
+
+// ============================================================
+// AUTH FLOW
+// ============================================================
+async function api(path, options = {}) {
+  // Thin fetch wrapper that attaches the auth token and parses JSON.
+  const headers = options.headers || {};
+  if (authToken) headers['Authorization'] = 'Bearer ' + authToken;
+  if (options.body && !(options.body instanceof FormData) && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json';
+  }
+  const res = await fetch(path, { ...options, headers });
+  if (res.status === 401) {
+    handleSessionExpired();
+    throw new Error('Session expired');
+  }
+  return res;
+}
+
+function handleSessionExpired() {
+  // Drop the token and bring the login screen back.
+  authToken = null;
+  currentUser = null;
+  localStorage.removeItem(TOKEN_KEY);
+  showLogin();
+}
+
+async function tryRestoreSession() {
+  // Validate saved token on page load; show login if missing or expired.
+  if (!authToken) { showLogin(); return; }
+  try {
+    const res = await api('/api/auth/me');
+    if (!res.ok) throw new Error('bad token');
+    const data = await res.json();
+    currentUser = data.user;
+    enterApp();
+  } catch (e) {
+    handleSessionExpired();
+  }
+}
+
+function showLogin() {
+  // Hide the app and reveal the login card.
+  document.getElementById('app').classList.remove('active');
+  document.getElementById('login-screen').classList.add('active');
+  setTimeout(() => document.getElementById('li-password').focus(), 200);
+}
+
+async function handleLogin(e) {
+  // Submit credentials to /api/auth/login, store the bearer token on success.
+  e.preventDefault();
+  const btn = document.getElementById('login-btn');
+  const errBox = document.getElementById('login-error');
+  errBox.classList.remove('show');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Signing in ...';
+
+  try {
+    const username = document.getElementById('li-username').value.trim();
+    const password = document.getElementById('li-password').value;
+    if (!username) {
+      document.getElementById('login-error-text').textContent = 'Please enter your username.';
+      errBox.classList.add('show');
+      btn.disabled = false;
+      btn.innerHTML = '<span>Sign In</span><i data-lucide="arrow-right"></i>';
+      if (window.lucide) lucide.createIcons();
+      return;
+    }
+    if (!password) {
+      document.getElementById('login-error-text').textContent = 'Please enter your password.';
+      errBox.classList.add('show');
+      btn.disabled = false;
+      btn.innerHTML = '<span>Sign In</span><i data-lucide="arrow-right"></i>';
+      if (window.lucide) lucide.createIcons();
+      return;
+    }
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Sign in failed');
+    }
+    const data = await res.json();
+    authToken = data.token;
+    currentUser = data.user;
+    localStorage.setItem(TOKEN_KEY, authToken);
+    enterApp();
+  } catch (e) {
+    document.getElementById('login-error-text').textContent = e.message || 'Invalid credentials.';
+    errBox.classList.add('show');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<span>Sign In</span><i data-lucide="arrow-right"></i>';
+    if (window.lucide) lucide.createIcons();
+  }
+}
+
+let heartbeatTimer = null;
+
+function enterApp() {
+  // Hide the login screen and reveal the dashboard, then load fresh data.
+  document.getElementById('login-screen').classList.remove('active');
+  document.getElementById('app').classList.add('active');
+  if (currentUser) {
+    document.getElementById('user-name').textContent = currentUser.username;
+    document.getElementById('user-role').textContent = currentUser.role || 'analyst';
+    document.getElementById('user-avatar').textContent = (currentUser.username[0] || 'A').toUpperCase();
+  }
+  loadUniqueValues();
+  refreshStats();
+  loadRecentFromHistory();
+  // Start system heartbeat (immediate + every 30s). Heartbeat also polls
+  // /api/stats so cases added by the auto-watcher surface in the bell + sidebar
+  // badge without requiring the admin to refresh the page.
+  checkSystemHealth();
+  pollWatcherUpdates();
+  if (heartbeatTimer) clearInterval(heartbeatTimer);
+  heartbeatTimer = setInterval(() => {
+    checkSystemHealth();
+    pollWatcherUpdates();
+  }, 30000);
+  if (window.lucide) lucide.createIcons();
+}
+
+async function pollWatcherUpdates() {
+  // Background poll: refreshes the openCases counter so notifications and the
+  // history badge auto-appear when the watcher ingests new malicious records.
+  // If the admin is already on the History tab we silently acknowledge so we
+  // don't spam them with badges for cases they're actively reviewing.
+  await refreshStats();
+  const onHistory = document.getElementById('tab-history')?.classList.contains('active');
+  if (onHistory) {
+    _setAcked(openCases);
+    _setHistorySeen(openCases);
+    document.getElementById('notif-dot')?.classList.remove('active');
+    setOpenCasesBadge();
+    renderNotifList(openCases);
+  }
+}
+
+async function signOut() {
+  // Invalidate server session and clear local state.
+  try { await api('/api/auth/logout', { method: 'POST' }); } catch (e) {}
+  authToken = null;
+  currentUser = null;
+  localStorage.removeItem(TOKEN_KEY);
+  if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
+  // Reset in-memory dashboard state so a fresh login starts clean.
+  sessionTotal = 0; sessionMalicious = 0; sessionNormal = 0; openCases = 0;
+  recentPredictions = [];
+  searchCache = [];
+  showLogin();
+}
+
+// ============================================================
+// TAB ROUTING
+// ============================================================
+function switchTab(tabId, navEl) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+  const target = document.getElementById(tabId);
+  if (target) target.classList.add('active');
+  if (navEl) navEl.classList.add('active');
+
+  const map = {
+    'tab-dashboard': 'dashboard',
+    'tab-single':    'analysis',
+    'tab-batch':     'analysis',
+    'tab-history':   'history',
+    'tab-compare':   'models',
+  };
+  if (map[tabId]) syncTopTab(map[tabId]);
+
+  if (tabId === 'tab-compare') loadModelComparison();
+  if (tabId === 'tab-history')  { loadHistory(); dismissHistoryBadge(); clearNotifications(); }
+}
+
+function navigateTab(tabId) {
+  // Click the matching sidebar item so highlight states stay consistent.
+  const navEl = document.querySelector(`.nav-item[data-tab="${tabId}"]`);
+  switchTab(tabId, navEl);
+}
+
+function syncTopTab(name) {
+  document.querySelectorAll('.topbar-tab').forEach(t => t.classList.remove('active'));
+  const el = document.querySelector(`.topbar-tab[data-toptab="${name}"]`);
+  if (el) el.classList.add('active');
+}
+
+function switchTopTab(name) {
+  syncTopTab(name);
+  const tabMap = {
+    dashboard: 'tab-dashboard',
+    analysis:  'tab-single',
+    history:   'tab-history',
+    models:    'tab-compare',
+  };
+  const tabId = tabMap[name];
+  if (!tabId) return;
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+  document.getElementById(tabId).classList.add('active');
+  const navEl = document.querySelector(`.nav-item[data-tab="${tabId}"]`);
+  if (navEl) navEl.classList.add('active');
+  if (name === 'models')  loadModelComparison();
+  if (name === 'history') { loadHistory(); dismissHistoryBadge(); clearNotifications(); }
+}
+
+// ============================================================
+// EXPANDABLE PANELS (click to enlarge)
+// ============================================================
+function openExpandedPanel(key) {
+  // Clone the original panel into the centered modal layer.
+  const source = document.querySelector(`[data-expand="${key}"]`);
+  if (!source) return;
+  const overlay = document.getElementById('panel-overlay');
+  const body    = document.getElementById('expanded-body');
+  const title   = document.getElementById('expanded-title');
+
+  title.textContent = expandableTitles[key] || 'Details';
+
+  const clone = source.cloneNode(true);
+  clone.classList.remove('clickable');
+  clone.removeAttribute('data-expand');
+  clone.style.transform = 'none';
+  clone.style.boxShadow = 'none';
+  clone.style.border = '1px solid var(--border)';
+  clone.style.cursor = 'default';
+
+  body.innerHTML = '';
+  body.appendChild(clone);
+  overlay.classList.add('show');
+  if (window.lucide) lucide.createIcons();
+}
+
+function closeExpandedPanel(e) {
+  if (e && e.target.id !== 'panel-overlay' && e.type === 'click' && e.target.id !== 'panel-overlay') {
+    if (e.currentTarget.id !== 'panel-overlay') return;
+  }
+  document.getElementById('panel-overlay').classList.remove('show');
+}
+
+// ============================================================
+// TOAST
+// ============================================================
+function toast(msg, type = 'info', duration = 3200) {
+  const t = document.getElementById('toast');
+  t.className = '';
+  t.classList.add(type);
+  const icon = type === 'error' ? 'alert-circle' : type === 'success' ? 'check-circle-2' : 'info';
+  t.innerHTML = `<i data-lucide="${icon}"></i><span>${msg}</span>`;
+  if (window.lucide) lucide.createIcons();
+  requestAnimationFrame(() => t.classList.add('show'));
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), duration);
+}
+
+// ============================================================
+// COUNTER ANIMATION
+// ============================================================
+function animateCounter(el, target, durationMs = 900) {
+  // Smoothly count from current to target so KPI tiles feel alive.
+  const start = parseFloat(el.textContent.replace(/[^0-9.-]/g, '')) || 0;
+  const startTime = performance.now();
+  function step(now) {
+    const t = Math.min(1, (now - startTime) / durationMs);
+    const eased = 1 - Math.pow(1 - t, 3);
+    const value = start + (target - start) * eased;
+    el.textContent = Number.isInteger(target) ? Math.round(value).toLocaleString() : value.toFixed(2);
+    if (t < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+function runIntroCounters() {
+  // Count up every element flagged with data-counter on first paint.
+  document.querySelectorAll('[data-counter]').forEach(el => {
+    const target = parseFloat(el.getAttribute('data-counter')) || 0;
+    animateCounter(el, target, 1100);
+  });
+}
+
+// ============================================================
+// THRESHOLD SLIDER
+// ============================================================
+function bindThreshold() {
+  const slider = document.getElementById('threshold-slider');
+  slider.addEventListener('input', () => {
+    const v = parseFloat(slider.value).toFixed(2);
+    document.getElementById('threshold-display').textContent = v;
+    document.getElementById('threshold-inline').textContent  = v;
+    document.getElementById('batch-threshold-display').textContent = v;
+  });
+}
+
+// ============================================================
+// FORM DROPDOWNS
+// ============================================================
+async function loadUniqueValues() {
+  try {
+    const res = await api('/api/unique-values');
+    if (!res.ok) return;
+    const data = await res.json();
+    populateSelect('f-dept',     data.employee_department || []);
+    populateSelect('f-campus',   data.employee_campus     || []);
+    populateSelect('f-position', data.employee_position   || []);
+    populateSelect('f-country',  data.employee_origin_country || []);
+  } catch (e) {
+    toast('Could not load dropdown values. Is the server running?', 'error');
+  }
+}
+
+function populateSelect(id, options) {
+  // Fill a <select> element with option values fetched from the API unique-values endpoint.
+  const sel = document.getElementById(id);
+  if (!sel) return;
+  const placeholder = '<option value="" disabled selected>-- Not selected --</option>';
+  sel.innerHTML = placeholder + options.map(o => `<option value="${o}">${o}</option>`).join('');
+}
+
+function getFormRecord() {
+  // Collect all 21 features from the form into one record dict.
+  return {
+    employee_department:         document.getElementById('f-dept').value,
+    employee_campus:             document.getElementById('f-campus').value,
+    employee_position:           document.getElementById('f-position').value,
+    employee_seniority_years:    +document.getElementById('f-seniority').value,
+    is_contractor:               document.getElementById('f-contractor').checked ? 1 : 0,
+    employee_classification:     +document.getElementById('f-clearance').value,
+    has_foreign_citizenship:     document.getElementById('f-foreign').checked ? 1 : 0,
+    has_criminal_record:         document.getElementById('f-criminal').checked ? 1 : 0,
+    has_medical_history:         document.getElementById('f-medical').checked ? 1 : 0,
+    employee_origin_country:     document.getElementById('f-country').value,
+    total_printed_pages:         +document.getElementById('f-printed').value,
+    num_printed_pages_off_hours: +document.getElementById('f-offhours').value,
+    total_files_burned:          +document.getElementById('f-burned').value,
+    burned_from_other:           +document.getElementById('f-burnedother').value,
+    is_abroad:                   document.getElementById('f-abroad').checked ? 1 : 0,
+    trip_day_number:             +document.getElementById('f-tripday').value,
+    hostility_country_level:     +document.getElementById('f-hostility').value,
+    num_entries:                 +document.getElementById('f-entries').value,
+    num_unique_campus:           +document.getElementById('f-campuses').value,
+    late_exit_flag:              document.getElementById('f-late').checked ? 1 : 0,
+    entry_during_weekend:        document.getElementById('f-weekend').checked ? 1 : 0,
+    threshold:                   +document.getElementById('threshold-slider').value,
+    model:                       selectedModel,
+  };
+}
+
+// ============================================================
+// SINGLE ANALYSIS
+// ============================================================
+async function runSingleAnalysis() {
+  const btn = document.getElementById('analyse-btn');
+
+  // Validate dropdowns first so the analyst gets a clear message instead of a server error.
+  const dropdownCheck = [
+    ['f-dept',     'Department'],
+    ['f-campus',   'Campus'],
+    ['f-position', 'Position'],
+    ['f-country',  'Origin Country'],
+  ];
+  for (const [id, label] of dropdownCheck) {
+    const el = document.getElementById(id);
+    if (!el || !el.value) {
+      toast(`Please select a ${label} before analysing.`, 'error', 3500);
+      if (el) el.focus();
+      return;
+    }
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Analysing ...';
+
+  try {
+    const record = getFormRecord();
+    const res = await api('/api/predict', {
+      method: 'POST',
+      body: JSON.stringify(record),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Prediction failed');
+    }
+    const data = await res.json();
+    displayResult(data);
+
+    sessionTotal++;
+    if (data.label === 'MALICIOUS') sessionMalicious++; else sessionNormal++;
+    updateSessionStats(data);
+    logRecentPrediction(record, data);
+    refreshStats();
+
+  } catch (e) {
+    toast('Error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i data-lucide="search"></i> Analyse Employee';
+    if (window.lucide) lucide.createIcons();
+  }
+}
+
+function displayResult(data) {
+  // Render the verdict banner, probability cards, feature chart and explanation.
+  const panel  = document.getElementById('result-panel');
+  const banner = document.getElementById('verdict-banner');
+  const isMal  = data.label === 'MALICIOUS';
+
+  banner.className = 'verdict-banner ' + (isMal ? 'malicious' : 'normal');
+  document.getElementById('verdict-label').className   = 'verdict-label ' + (isMal ? 'malicious' : 'normal');
+  document.getElementById('verdict-label').innerHTML   =
+    `<i data-lucide="${isMal ? 'alert-triangle' : 'check-circle-2'}"></i> ${data.label}`;
+  document.getElementById('verdict-sub').textContent   = data.risk_label;
+  document.getElementById('conf-num').className        = 'conf-num ' + (isMal ? 'malicious' : 'normal');
+  document.getElementById('conf-num').textContent      = (data.confidence * 100).toFixed(1) + '%';
+
+  document.getElementById('m-normal').textContent    = (data.proba_normal * 100).toFixed(1) + '%';
+  document.getElementById('m-malicious').textContent = (data.proba_malicious * 100).toFixed(1) + '%';
+  document.getElementById('m-risk').textContent      = (data.risk_label || '').split(' ')[0];
+
+  // Update the feature-importance panel title based on which model was used.
+  const isLR = data.model_used === 'logistic_regression';
+  const fpTitle = document.getElementById('feature-panel-title');
+  const fpNote  = document.getElementById('feature-panel-note');
+  if (fpTitle) fpTitle.textContent = isLR
+    ? 'Feature Contributions (LR Coefficients)'
+    : 'Feature Contributions (SHAP)';
+  if (fpNote) fpNote.textContent = isLR
+    ? 'Bars show the magnitude of each feature\'s logistic regression coefficient. Positive = pushes toward MALICIOUS.'
+    : 'Bars are scaled to the largest absolute SHAP value.';
+
+  renderShapChart(data.top_features);
+  renderRiskBreakdown(data);
+  document.getElementById('explanation-box').textContent = data.explanation;
+  panel.style.display = 'block';
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (window.lucide) lucide.createIcons();
+}
+
+function renderRiskBreakdown(data) {
+  // Decompose the threat probability across the top SHAP features so an
+  // analyst can see exactly which behaviours drove the score up or down.
+  const list = document.getElementById('risk-breakdown-list');
+  if (!list) return;
+  const features = (data.top_features || []).slice(0, 8);
+  if (!features.length) {
+    list.innerHTML = '<p style="color:var(--muted);font-size:12px;padding:12px">No factors available.</p>';
+    document.getElementById('risk-breakdown-total').textContent = '-';
+    return;
+  }
+
+  const totalAbs = features.reduce((a, f) => a + Math.abs(f.shap_value || 0), 0) || 1;
+  const maxAbs   = Math.max(...features.map(f => Math.abs(f.shap_value || 0)), 0.001);
+
+  list.innerHTML = features.map(f => {
+    const v       = f.shap_value || 0;
+    const isRisk  = f.direction === 'risk';
+    const name    = f.display_name || f.feature || '';
+    const widthPct = (Math.abs(v) / maxAbs * 100).toFixed(1);
+    const sharePct = (Math.abs(v) / totalAbs * 100).toFixed(1);
+    const colour   = isRisk ? 'var(--red)' : 'var(--green)';
+    const arrow    = isRisk ? '↑' : '↓';
+    const verdict  = isRisk ? 'pushes risk UP' : 'pulls risk DOWN';
+    return `
+      <div style="display:grid;grid-template-columns:180px 1fr 80px 90px;gap:14px;align-items:center;padding:6px 0">
+        <div style="font-size:12.5px;color:var(--bright);font-weight:500">${name}</div>
+        <div style="height:8px;background:rgba(255,255,255,0.04);border-radius:4px;overflow:hidden">
+          <div style="height:100%;width:${widthPct}%;background:${colour};border-radius:4px"></div>
+        </div>
+        <div style="font-family:var(--font-mono);font-size:11.5px;color:${colour};text-align:right">
+          ${arrow} ${sharePct}%
+        </div>
+        <div style="font-size:10.5px;color:var(--text);text-align:right">${verdict}</div>
+      </div>`;
+  }).join('');
+
+  const riskCount = features.filter(f => f.direction === 'risk').length;
+  document.getElementById('risk-breakdown-total').textContent =
+    `${riskCount} factor${riskCount === 1 ? '' : 's'} elevating risk · ${features.length - riskCount} reducing it`;
+}
+
+function renderShapChart(features) {
+  const chart = document.getElementById('shap-chart');
+  if (!features || !features.length) {
+    chart.innerHTML = '<p style="color:var(--muted);font-size:12px">No SHAP data.</p>';
+    return;
+  }
+  const maxAbs = Math.max(...features.map(f => Math.abs(f.shap_value || 0)), 0.001);
+  chart.innerHTML = features.map(f => {
+    const pct    = Math.min(Math.abs(f.shap_value / maxAbs) * 100, 100).toFixed(1);
+    const isRisk = f.direction === 'risk';
+    const name   = f.display_name || f.feature || '';
+    const val    = (f.shap_value || 0).toFixed(4);
+    return `<div class="shap-row">
+      <div class="shap-name">${name}</div>
+      <div class="shap-bar-wrap"><div class="shap-bar ${isRisk ? 'risk' : 'safe'}" style="width:${pct}%"></div></div>
+      <div class="shap-val">${isRisk ? '+' : ''}${val}</div>
+    </div>`;
+  }).join('');
+}
+
+function resetForm() {
+  // Dropdowns back to the placeholder.
+  ['f-dept','f-campus','f-position','f-country'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (sel) sel.selectedIndex = 0;
+  });
+  // Checkboxes off.
+  ['f-contractor','f-foreign','f-criminal','f-medical','f-abroad','f-late','f-weekend']
+    .forEach(id => document.getElementById(id).checked = false);
+  // Number fields back to their original defaults.
+  document.getElementById('f-seniority').value = 5;
+  document.getElementById('f-clearance').value = 2;
+  ['f-printed','f-offhours','f-burned','f-burnedother','f-tripday','f-hostility']
+    .forEach(id => document.getElementById(id).value = 0);
+  ['f-entries','f-campuses'].forEach(id => document.getElementById(id).value = 1);
+  document.getElementById('result-panel').style.display = 'none';
+  toast('Form reset', 'success', 1800);
+}
+
+// ============================================================
+// DASHBOARD STATS
+// ============================================================
+function updateSessionStats(data) {
+  // Update tiles, bars, donut and the risk score ring after a prediction.
+  animateCounter(document.getElementById('kpi-total'), sessionTotal);
+  animateCounter(document.getElementById('kpi-malicious'), sessionMalicious);
+  animateCounter(document.getElementById('kpi-normal'), sessionNormal);
+  if (data.label === 'MALICIOUS') openCases++;
+  setOpenCasesBadge();
+
+  const malPct = sessionTotal > 0 ? ((sessionMalicious / sessionTotal) * 100).toFixed(1) + '%' : '0%';
+  document.getElementById('kpi-mal-pct').textContent = malPct;
+  animateCounter(document.getElementById('total-issues-big'), sessionTotal);
+
+  // Bucket by risk level for the bar chart.
+  const riskLabel = (data.risk_label || '').toLowerCase();
+  if (riskLabel.includes('critical') || (data.label === 'MALICIOUS' && data.confidence > 0.85)) riskCounts.critical++;
+  else if (riskLabel.includes('high')) riskCounts.high++;
+  else if (riskLabel.includes('mod'))  riskCounts.medium++;
+  else riskCounts.low++;
+
+  const maxCount = Math.max(...Object.values(riskCounts), 1);
+  ['critical','high','medium','low'].forEach(k => {
+    const pct = ((riskCounts[k] / maxCount) * 100).toFixed(0);
+    document.getElementById('bar-' + k).style.width = pct + '%';
+    document.getElementById('cnt-' + k).textContent = riskCounts[k];
+    const sevEl = document.getElementById('sev-' + k);
+    if (sevEl) sevEl.textContent = riskCounts[k];
+  });
+
+  // Donut for malicious vs normal share.
+  const circ = 201;
+  const malFrac  = sessionTotal > 0 ? sessionMalicious / sessionTotal : 0;
+  const normFrac = 1 - malFrac;
+  document.getElementById('donut-mal').setAttribute('stroke-dasharray', `${(malFrac * circ).toFixed(1)} ${circ}`);
+  document.getElementById('donut-norm').setAttribute('stroke-dasharray', `${(normFrac * circ).toFixed(1)} ${circ}`);
+  document.getElementById('donut-norm').setAttribute('stroke-dashoffset', `-${(malFrac * circ).toFixed(1)}`);
+  document.getElementById('donut-mal-pct').textContent  = sessionTotal > 0 ? (malFrac * 100).toFixed(0) + '%' : '0%';
+  document.getElementById('donut-norm-pct').textContent = sessionTotal > 0 ? (normFrac * 100).toFixed(0) + '%' : '0%';
+
+  // Risk score ring.
+  let grade = '--', gradeClass = 'grade-c', dashOffset = 220;
+  if (sessionTotal > 0) {
+    if (malFrac < 0.05) { grade = 'A'; gradeClass = 'grade-a'; dashOffset = 30; }
+    else if (malFrac < 0.15) { grade = 'B'; gradeClass = 'grade-b'; dashOffset = 60; }
+    else if (malFrac < 0.30) { grade = 'C'; gradeClass = 'grade-c'; dashOffset = 110; }
+    else if (malFrac < 0.50) { grade = 'D'; gradeClass = 'grade-d'; dashOffset = 160; }
+    else { grade = 'F'; gradeClass = 'grade-f'; dashOffset = 200; }
+  }
+  const grade$ = document.getElementById('risk-grade');
+  const ring$  = document.getElementById('risk-ring');
+  grade$.textContent = grade;
+  grade$.className   = 'ring-grade ' + gradeClass;
+  ring$.setAttribute('r', '58');
+  const C = 2 * Math.PI * 58;
+  ring$.setAttribute('stroke-dasharray', C.toFixed(2));
+  ring$.style.strokeDashoffset = (sessionTotal === 0 ? C : dashOffset);
+  ring$.classList.remove('grade-a','grade-b','grade-c','grade-d','grade-f');
+  ring$.classList.add(gradeClass);
+  document.getElementById('risk-desc').innerHTML = sessionTotal === 0
+    ? 'Run analyses to<br>generate a risk score'
+    : `${(malFrac*100).toFixed(1)}% of analysed records<br>flagged as malicious`;
+  updateRiskScale(grade);
+}
+
+function setOpenCasesBadge() {
+  // Show only the NEW open cases since the user last viewed the History tab.
+  const el = document.getElementById('badge-malicious');
+  if (!el) return;
+  // Clamp historySeen down if open cases decreased (e.g. cases were cleared/deleted).
+  if (openCases < _historySeen()) _setHistorySeen(openCases);
+  const delta = openCases - _historySeen();
+  if (delta > 0) {
+    el.textContent = delta;
+    el.style.display = '';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+function dismissHistoryBadge() {
+  // Record that the user has seen up to the current open case count.
+  _setHistorySeen(openCases);
+  const el = document.getElementById('badge-malicious');
+  if (el) el.style.display = 'none';
+}
+
+function refreshRiskPanels(breakdown) {
+  // Update Issues By Risk Level bars and Alerts By Severity counts.
+  if (!breakdown) return;
+  riskCounts = {
+    critical: breakdown.critical || 0,
+    high:     breakdown.high     || 0,
+    medium:   breakdown.medium   || 0,
+    low:      breakdown.low      || 0,
+  };
+  const maxCount = Math.max(...Object.values(riskCounts), 1);
+  ['critical','high','medium','low'].forEach(k => {
+    const pct = ((riskCounts[k] / maxCount) * 100).toFixed(0);
+    const bar = document.getElementById('bar-' + k);
+    const cnt = document.getElementById('cnt-' + k);
+    if (bar) bar.style.width = pct + '%';
+    if (cnt) cnt.textContent = riskCounts[k];
+    const sev = document.getElementById('sev-' + k);
+    if (sev) sev.textContent = riskCounts[k];
+  });
+}
+
+function refreshDonutAndRing() {
+  // Update the malicious/normal donut and the overall risk score ring.
+  const circ = 201;
+  const malFrac  = sessionTotal > 0 ? sessionMalicious / sessionTotal : 0;
+  const normFrac = 1 - malFrac;
+  document.getElementById('donut-mal').setAttribute('stroke-dasharray', `${(malFrac * circ).toFixed(1)} ${circ}`);
+  document.getElementById('donut-norm').setAttribute('stroke-dasharray', `${(normFrac * circ).toFixed(1)} ${circ}`);
+  document.getElementById('donut-norm').setAttribute('stroke-dashoffset', `-${(malFrac * circ).toFixed(1)}`);
+  document.getElementById('donut-mal-pct').textContent  = sessionTotal > 0 ? (malFrac * 100).toFixed(0) + '%' : '0%';
+  document.getElementById('donut-norm-pct').textContent = sessionTotal > 0 ? (normFrac * 100).toFixed(0) + '%' : '0%';
+
+  let grade = '--', gradeClass = 'grade-c', dashOffset = 220;
+  if (sessionTotal > 0) {
+    if (malFrac < 0.05)      { grade = 'A'; gradeClass = 'grade-a'; dashOffset = 30; }
+    else if (malFrac < 0.15) { grade = 'B'; gradeClass = 'grade-b'; dashOffset = 60; }
+    else if (malFrac < 0.30) { grade = 'C'; gradeClass = 'grade-c'; dashOffset = 110; }
+    else if (malFrac < 0.50) { grade = 'D'; gradeClass = 'grade-d'; dashOffset = 160; }
+    else                     { grade = 'F'; gradeClass = 'grade-f'; dashOffset = 200; }
+  }
+  document.getElementById('risk-grade').textContent = grade;
+  const ring$ = document.getElementById('risk-ring');
+  ring$.setAttribute('r', '58');
+  const C = 2 * Math.PI * 58;
+  ring$.setAttribute('stroke-dasharray', C.toFixed(2));
+  ring$.style.strokeDashoffset = (sessionTotal === 0 ? C : dashOffset);
+  ring$.classList.remove('grade-a','grade-b','grade-c','grade-d','grade-f');
+  ring$.classList.add(gradeClass);
+  document.getElementById('risk-desc').innerHTML = sessionTotal === 0
+    ? 'Run analyses to<br>generate a risk score'
+    : `${(malFrac*100).toFixed(1)}% of analysed records<br>flagged as malicious`;
+  updateRiskScale(grade);
+}
+
+function updateRiskScale(grade) {
+  // Light up the correct one of the 5 A/B/C/D/F scale bars under the risk ring.
+  const map = {
+    'A': { id: 'scale-A', colour: 'green' },
+    'B': { id: 'scale-B', colour: 'green' },
+    'C': { id: 'scale-C', colour: 'amber' },
+    'D': { id: 'scale-D', colour: 'red'   },
+    'F': { id: 'scale-F', colour: 'red'   },
+  };
+  ['scale-A','scale-B','scale-C','scale-D','scale-F'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.className = 'scale-item'; }
+  });
+  const entry = map[grade];
+  if (entry) {
+    const el = document.getElementById(entry.id);
+    if (el) el.className = `scale-item active ${entry.colour}`;
+  }
+}
+
+async function refreshTimeline() {
+  // Fetch the last 14 days of malicious/normal counts and draw the bar chart.
+  try {
+    const res = await api('/api/timeline?days=14');
+    if (!res.ok) return;
+    drawTimeline(await res.json());
+  } catch (e) {}
+}
+
+function drawTimeline(data) {
+  // Build the 14-day stacked bar SVG from daily malicious/normal counts fetched from /api/timeline.
+  const days = data.days || [];
+  const mal  = data.malicious || [];
+  const norm = data.normal    || [];
+
+  const totalMal  = mal.reduce((a, b) => a + b, 0);
+  const totalNorm = norm.reduce((a, b) => a + b, 0);
+  const hasData   = (totalMal + totalNorm) > 0;
+
+  document.getElementById('timeline-summary').textContent = hasData
+    ? `${totalMal} malicious · ${totalNorm} normal · ${totalMal + totalNorm} total (last 14 days)`
+    : 'No threat activity in the last 14 days';
+
+  // Chart geometry: extra room on left for Y-axis title, bottom for rotated
+  // date labels + X-axis title.
+  const W = 800, H = 230;
+  const padL = 50, padR = 16, padT = 14, padB = 70;
+  const chartW = W - padL - padR;
+  const chartH = H - padT - padB;
+
+  const n    = Math.max(days.length, 1);
+  const slot = chartW / n;
+  const barW = Math.max(slot * 0.6, 6);
+  const rawMax = Math.max(1, ...mal.map((v, i) => v + (norm[i] || 0)));
+  // Pick a "nice" max so gridline labels are clean integers.
+  const max = niceCeil(rawMax);
+
+  // Y-axis: integer gridlines (at most 5 ticks).
+  const ticks = makeTicks(max, 4);
+  const gridLines = ticks.map(t => {
+    const y = padT + chartH - (t / max) * chartH;
+    return `
+      <line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}"
+            stroke="rgba(80,120,180,0.12)" stroke-width="1" stroke-dasharray="3 4"/>
+      <text x="${padL - 6}" y="${y + 3}" text-anchor="end"
+            font-family="JetBrains Mono, monospace" font-size="9"
+            fill="rgba(148,163,184,0.55)">${t}</text>`;
+  }).join('');
+
+  // Axes.
+  const axisX = `<line x1="${padL}" y1="${padT + chartH}" x2="${W - padR}" y2="${padT + chartH}"
+    stroke="rgba(80,120,180,0.35)" stroke-width="1"/>`;
+  const axisY = `<line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT + chartH}"
+    stroke="rgba(80,120,180,0.35)" stroke-width="1"/>`;
+
+  // Axis titles.
+  const yTitle = `<text x="14" y="${padT + chartH / 2}" text-anchor="middle"
+    font-family="JetBrains Mono, monospace" font-size="10"
+    fill="rgba(203,213,225,0.75)"
+    transform="rotate(-90, 14, ${padT + chartH / 2})">Predictions</text>`;
+  const xTitle = `<text x="${padL + chartW / 2}" y="${H - 6}" text-anchor="middle"
+    font-family="JetBrains Mono, monospace" font-size="10"
+    fill="rgba(203,213,225,0.75)">Date (MM-DD) · Last 14 days</text>`;
+
+  const bars = days.map((d, i) => {
+    const m = mal[i]  || 0;
+    const o = norm[i] || 0;
+    const total = m + o;
+    const cx = padL + slot * i + slot / 2;
+    const x  = cx - barW / 2;
+    const totalH = (total / max) * chartH;
+    const malH   = (m     / max) * chartH;
+    const normH  = totalH - malH;
+    const yNorm  = padT + chartH - totalH;
+    const yMal   = yNorm + normH;
+    return `
+      <rect x="${x}" y="${yNorm}" width="${barW}" height="${Math.max(normH, 0)}" fill="var(--green)" opacity="0.85" rx="2">
+        <title>${d}: Normal ${o}, Malicious ${m}</title>
+      </rect>
+      <rect x="${x}" y="${yMal}"  width="${barW}" height="${Math.max(malH, 0)}"  fill="var(--red)"   opacity="0.95" rx="2">
+        <title>${d}: Malicious ${m}, Normal ${o}</title>
+      </rect>`;
+  }).join('');
+
+  // Date label per bar, rotated -45° so they fit and clearly point to their bar.
+  const labelY = padT + chartH + 12;
+  const labels = days.map((d, i) => {
+    const cx = padL + slot * i + slot / 2;
+    const dd = d.slice(5);  // MM-DD
+    return `<text x="${cx}" y="${labelY}" text-anchor="end"
+                  font-family="JetBrains Mono, monospace" font-size="9"
+                  fill="rgba(148,163,184,0.8)"
+                  transform="rotate(-45, ${cx}, ${labelY})">${dd}</text>`;
+  }).join('');
+
+  // Empty-state overlay.
+  const emptyOverlay = hasData ? '' :
+    `<text x="${padL + chartW / 2}" y="${padT + chartH / 2 - 6}" text-anchor="middle"
+           font-family="JetBrains Mono, monospace" font-size="11"
+           fill="rgba(148,163,184,0.4)">No records in this period</text>
+     <text x="${padL + chartW / 2}" y="${padT + chartH / 2 + 10}" text-anchor="middle"
+           font-family="JetBrains Mono, monospace" font-size="9"
+           fill="rgba(148,163,184,0.25)">Run analyses to populate the timeline</text>`;
+
+  document.getElementById('timeline-bars').innerHTML =
+    yTitle + xTitle + gridLines + axisX + axisY + bars + emptyOverlay;
+  document.getElementById('timeline-labels').innerHTML = labels;
+}
+
+// Round up to a "nice" number for Y-axis max (e.g. 7 -> 10, 23 -> 25).
+function niceCeil(v) {
+  if (v <= 1)  return 1;
+  if (v <= 5)  return 5;
+  if (v <= 10) return 10;
+  const pow = Math.pow(10, Math.floor(Math.log10(v)));
+  const n = v / pow;
+  let m;
+  if      (n <= 1.5) m = 1.5;
+  else if (n <= 2)   m = 2;
+  else if (n <= 2.5) m = 2.5;
+  else if (n <= 5)   m = 5;
+  else               m = 10;
+  return Math.ceil(m * pow);
+}
+
+// Generate up to N integer ticks between 0 and max (excluding 0).
+function makeTicks(max, n) {
+  const step = Math.max(1, Math.ceil(max / n));
+  const out = [];
+  for (let v = step; v <= max; v += step) out.push(v);
+  if (!out.includes(max)) out.push(max);
+  return out;
+}
+
+async function refreshStats() {
+  // Pull aggregate counts from the audit log so the dashboard reflects all sessions.
+  try {
+    const res = await api('/api/stats');
+    if (!res.ok) return;
+    const s = await res.json();
+    openCases = s.open_cases || 0;
+    animateCounter(document.getElementById('kpi-cases'), openCases);
+    setOpenCasesBadge();
+
+    // Always sync KPI tiles to DB totals so deletions and status changes are reflected.
+    const dbTotal = s.total_predictions || 0;
+    const dbMal   = s.total_malicious  || 0;
+    const dbNorm  = s.total_normal     || 0;
+    sessionTotal     = dbTotal;
+    sessionMalicious = dbMal;
+    sessionNormal    = dbNorm;
+    animateCounter(document.getElementById('kpi-total'),     sessionTotal);
+    animateCounter(document.getElementById('kpi-malicious'), sessionMalicious);
+    animateCounter(document.getElementById('kpi-normal'),    sessionNormal);
+    animateCounter(document.getElementById('total-issues-big'), sessionTotal);
+    const malPct = sessionTotal > 0 ? ((sessionMalicious / sessionTotal) * 100).toFixed(1) + '%' : '0%';
+    document.getElementById('kpi-mal-pct').textContent = malPct;
+
+    // Update Classification donut, Risk Score, Issues By Risk Level and Severity panels.
+    refreshDonutAndRing();
+    refreshRiskPanels(s.risk_breakdown);
+    refreshTimeline();
+
+    // Update notification dot: red only when there are open threat cases.
+    updateNotifDot(openCases);
+
+    // Invalidate the search cache so the next search re-fetches fresh history.
+    searchCache = [];
+  } catch (e) {}
+}
+
+function logRecentPrediction(record, data) {
+  // Maintain a small in-memory list for the dashboard preview.
+  recentPredictions.unshift({
+    dept:       record.employee_department,
+    position:   record.employee_position,
+    label:      data.label,
+    confidence: data.confidence,
+    riskLabel:  data.risk_label,
+    ts:         new Date().toLocaleTimeString(),
+  });
+  if (recentPredictions.length > 8) recentPredictions.pop();
+
+  const tbody = document.getElementById('recent-tbody');
+  tbody.innerHTML = recentPredictions.map(p => {
+    const isMal = p.label === 'MALICIOUS';
+    return `<tr>
+      <td>${p.dept || '-'}</td>
+      <td>${p.position || '-'}</td>
+      <td><span class="tag ${isMal ? 'malicious' : 'normal'}">${p.label}</span></td>
+      <td style="font-family:var(--font-mono)">${(p.confidence*100).toFixed(1)}%</td>
+    </tr>`;
+  }).join('');
+}
+
+// ============================================================
+// BATCH UPLOAD
+// ============================================================
+async function handleBatchUpload(input) {
+  if (!input.files.length) return;
+  const file = input.files[0];
+
+  // Frontend guards (backend also validates, but catch obvious issues early).
+  if (!file.name.toLowerCase().endsWith('.csv')) {
+    toast('Only CSV files are accepted.', 'error', 4000);
+    input.value = '';
+    return;
+  }
+  if (file.size === 0) {
+    toast('The selected file is empty.', 'error', 4000);
+    input.value = '';
+    return;
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    toast('File too large. Maximum allowed size is 10 MB.', 'error', 4000);
+    input.value = '';
+    return;
+  }
+
+  const threshold = +document.getElementById('threshold-slider').value;
+
+  document.getElementById('batch-results').style.display = 'none';
+  document.getElementById('batch-loading').style.display = 'block';
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const res = await api(`/api/predict-batch?threshold=${threshold}&model=${selectedModel}`, { method: 'POST', body: formData });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Batch prediction failed');
+    }
+    const data = await res.json();
+    renderLeaderboard(data);
+
+    sessionTotal     += data.summary.total;
+    sessionMalicious += data.summary.malicious;
+    sessionNormal    += data.summary.normal;
+    animateCounter(document.getElementById('kpi-total'), sessionTotal);
+    animateCounter(document.getElementById('kpi-malicious'), sessionMalicious);
+    animateCounter(document.getElementById('kpi-normal'), sessionNormal);
+    openCases += data.summary.malicious;
+    setOpenCasesBadge();
+    animateCounter(document.getElementById('total-issues-big'), sessionTotal);
+    document.getElementById('kpi-mal-pct').textContent = sessionTotal
+      ? ((sessionMalicious/sessionTotal)*100).toFixed(1) + '%'
+      : '0%';
+
+    refreshStats();
+  } catch (e) {
+    toast(e.message || 'Batch upload failed. Check the file format and try again.', 'error', 5000);
+  } finally {
+    document.getElementById('batch-loading').style.display = 'none';
+    input.value = '';
+  }
+}
+
+function renderLeaderboard(data) {
+  // Populate the batch results summary cards and the ranked threat leaderboard table.
+  document.getElementById('b-total').textContent     = data.summary.total;
+  document.getElementById('b-malicious').textContent = data.summary.malicious;
+  document.getElementById('b-normal').textContent    = data.summary.normal;
+
+  const tbody = document.getElementById('leaderboard-body');
+  tbody.innerHTML = data.results.map((r, i) => {
+    if (r.error) return `<tr><td>${i+1}</td><td>${r.row}</td><td colspan="6" style="color:var(--red)">${r.error}</td></tr>`;
+    const probPct = ((r.proba_malicious || 0) * 100).toFixed(0);
+    const rl      = (r.risk_label || '').toLowerCase();
+    const risk    = rl.includes('critical') ? 'critical'
+                  : rl.includes('high')     ? 'high'
+                  : rl.includes('mod')      ? 'moderate'
+                  : 'low';
+    return `<tr>
+      <td class="rank-num">${i+1}</td>
+      <td>${r.row}</td>
+      <td>${r.department || '-'}</td>
+      <td>${r.position || '-'}</td>
+      <td>${r.campus || '-'}</td>
+      <td><span class="tag ${(r.label||'').toLowerCase()}">${r.label || '-'}</span></td>
+      <td><span class="tag ${risk}">${r.risk_label || '-'}</span></td>
+      <td>
+        <div class="prob-mini"><div class="prob-mini-fill" style="width:${probPct}%"></div></div>
+        <span style="margin-left:8px;font-size:11px;font-family:var(--font-mono)">${(r.proba_malicious*100).toFixed(1)}%</span>
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('batch-results').style.display = 'block';
+}
+
+// ============================================================
+// HISTORY / CASE MANAGEMENT
+// ============================================================
+async function loadHistory() {
+  const label  = document.getElementById('history-label-filter').value;
+  const status = document.getElementById('history-status-filter').value;
+  const params = new URLSearchParams();
+  if (label)  params.append('label', label);
+  if (status) params.append('status', status);
+
+  const tbody = document.getElementById('history-tbody');
+  tbody.innerHTML = `<tr><td colspan="10">
+    <div class="empty-state">
+      <svg class="empty-state-art" viewBox="0 0 240 180"><use href="#sl-empty-history"/></svg>
+      <div class="empty-state-title"><span class="spinner" style="margin-right:8px"></span>Loading audit history</div>
+      <div class="empty-state-sub">Fetching predictions from the local audit store ...</div>
+    </div>
+  </td></tr>`;
+
+  try {
+    const res = await api('/api/history?' + params.toString());
+    if (!res.ok) throw new Error('Failed to load history');
+    const data = await res.json();
+    renderHistory(data.rows || []);
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="10" style="color:var(--red);text-align:center;padding:24px">${e.message}</td></tr>`;
+  }
+}
+
+let lastHistoryRows = [];
+
+function renderHistory(rows) {
+  // Render audit log rows into the history table and wire click-to-select row toggling.
+  lastHistoryRows = rows || [];
+  const tbody = document.getElementById('history-tbody');
+  document.getElementById('history-count').textContent = `${rows.length} entr${rows.length === 1 ? 'y' : 'ies'}`;
+  clearSelection();
+
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="11">
+      <div class="empty-state">
+        <svg class="empty-state-art" viewBox="0 0 240 180"><use href="#sl-empty-history"/></svg>
+        <div class="empty-state-title">No predictions yet</div>
+        <div class="empty-state-sub">Run a single analysis or upload a batch to start populating the audit trail. New records appear here in real time.</div>
+      </div>
+    </td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = rows.map(r => {
+    const isMal  = r.label === 'MALICIOUS';
+    const status = r.status || 'open';
+    const _d  = r.timestamp ? new Date(r.timestamp.endsWith('Z') ? r.timestamp : r.timestamp + 'Z') : null;
+    const ts  = _d ? _d.toLocaleString('en-ZA', {timeZone:'Africa/Johannesburg',hour12:false}).replace(',','').slice(0,16) : '-';
+    const dept   = (r.inputs && r.inputs.employee_department) || '-';
+    const pos    = (r.inputs && r.inputs.employee_position) || '-';
+    const rowClass = status === 'escalated' ? 'row-escalated' : '';
+    const escalatedNote = status === 'escalated'
+      ? '<span title="Escalated – forwarded to senior review" style="color:var(--purple);font-size:10px;margin-left:4px">&uarr; Escalated</span>'
+      : '';
+    const modelKey  = r.model_used || 'random_forest';
+    const modelBadge = modelKey === 'logistic_regression'
+      ? '<span class="tag" style="background:rgba(59,158,255,0.12);color:var(--blue);border:1px solid rgba(59,158,255,0.3);font-size:9px">LR</span>'
+      : '<span class="tag" style="background:rgba(16,185,129,0.12);color:var(--green);border:1px solid rgba(16,185,129,0.3);font-size:9px">RF</span>';
+    return `<tr class="${rowClass}" data-report-id="${r.report_id}">
+      <td><input type="checkbox" class="row-check hist-cb" data-id="${r.report_id}" onchange="onRowCheckChange()"/></td>
+      <td style="font-family:var(--font-mono);color:var(--text)">${ts}</td>
+      <td>${r.username || '-'}</td>
+      <td><span class="tag ${r.source === 'batch' ? 'pending' : 'low'}">${(r.source || '').toUpperCase()}</span></td>
+      <td>${modelBadge}</td>
+      <td>${dept}</td>
+      <td>${pos}</td>
+      <td><span class="tag ${isMal ? 'malicious' : 'normal'}">${r.label}</span></td>
+      <td style="font-family:var(--font-mono)">${(r.confidence*100).toFixed(1)}%</td>
+      <td><span class="tag ${status}">${status}</span>${escalatedNote}</td>
+      <td style="display:flex;gap:6px;align-items:center">
+        <select class="status-select" onchange="updateCaseStatus('${r.report_id}', this.value)">
+          <option value="open"          ${status==='open'         ?'selected':''}>Open</option>
+          <option value="investigating" ${status==='investigating'?'selected':''}>Investigating</option>
+          <option value="cleared"       ${status==='cleared'      ?'selected':''}>Cleared</option>
+          <option value="escalated"     ${status==='escalated'    ?'selected':''}>Escalated</option>
+        </select>
+        <button class="btn-delete-icon" onclick="deleteSingleRow('${r.report_id}')" title="Delete this record" style="padding:4px 7px">
+          <i data-lucide="trash-2"></i>
+        </button>
+      </td>
+    </tr>`;
+  }).join('');
+  if (window.lucide) lucide.createIcons();
+
+  // Make any click on the row toggle its checkbox (except clicks on
+  // interactive elements like the status dropdown, delete button, or the
+  // checkbox itself (those handle their own clicks).
+  document.querySelectorAll('#history-tbody tr').forEach(tr => {
+    tr.style.cursor = 'pointer';
+    tr.addEventListener('click', ev => {
+      if (ev.target.closest('select, button, input, a, option, i, svg')) return;
+      const cb = tr.querySelector('.hist-cb');
+      if (!cb) return;
+      cb.checked = !cb.checked;
+      onRowCheckChange();
+    });
+  });
+}
+
+async function updateCaseStatus(reportId, status) {
+  // PATCH a single case status and trigger a full dashboard + history refresh.
+  try {
+    const res = await api(`/api/history/${reportId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+    if (!res.ok) throw new Error('Status update failed');
+    toast(`Case marked ${status}`, 'success');
+    refreshStats();
+    loadHistory();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+function exportHistoryCSV() {
+  // Export the currently loaded history rows (respects active filters).
+  if (!lastHistoryRows.length) {
+    toast('No history rows to export.', 'error');
+    return;
+  }
+  const headers = ['report_id','timestamp','analyst','source','label','confidence',
+                   'risk_label','status','department','position','campus'];
+  const escape = v => {
+    const s = (v ?? '').toString().replace(/"/g, '""');
+    return /[",\n]/.test(s) ? `"${s}"` : s;
+  };
+  const lines = [headers.join(',')];
+  for (const r of lastHistoryRows) {
+    const inp = r.inputs || {};
+    lines.push([
+      r.report_id, r.timestamp, r.username || '', r.source || '',
+      r.label || '', r.confidence ?? '', r.risk_label || '', r.status || '',
+      inp.employee_department || '', inp.employee_position || '', inp.employee_campus || '',
+    ].map(escape).join(','));
+  }
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  a.href = url; a.download = `securelens_audit_${stamp}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  toast(`Exported ${lastHistoryRows.length} rows.`, 'success');
+}
+
+// ============================================================
+// HISTORY SELECTION + BULK ACTIONS
+// ============================================================
+function getSelectedIds() {
+  return Array.from(document.querySelectorAll('.hist-cb:checked')).map(cb => cb.dataset.id);
+}
+
+function onRowCheckChange() {
+  const ids = getSelectedIds();
+  const bar  = document.getElementById('bulk-bar');
+  document.getElementById('bulk-count').textContent = ids.length;
+  if (ids.length > 0) {
+    bar.classList.add('visible');
+  } else {
+    bar.classList.remove('visible');
+  }
+  // Highlight selected rows.
+  document.querySelectorAll('#history-tbody tr').forEach(tr => {
+    const cb = tr.querySelector('.hist-cb');
+    if (cb) tr.classList.toggle('row-selected', cb.checked);
+  });
+  // Update select-all state.
+  const all = document.querySelectorAll('.hist-cb');
+  const checked = document.querySelectorAll('.hist-cb:checked');
+  const sa = document.getElementById('select-all-cb');
+  if (sa) {
+    sa.checked = all.length > 0 && checked.length === all.length;
+    sa.indeterminate = checked.length > 0 && checked.length < all.length;
+  }
+}
+
+function toggleSelectAll(cb) {
+  document.querySelectorAll('.hist-cb').forEach(c => { c.checked = cb.checked; });
+  onRowCheckChange();
+}
+
+function clearSelection() {
+  document.querySelectorAll('.hist-cb').forEach(c => { c.checked = false; });
+  const sa = document.getElementById('select-all-cb');
+  if (sa) { sa.checked = false; sa.indeterminate = false; }
+  const bar = document.getElementById('bulk-bar');
+  if (bar) bar.classList.remove('visible');
+  document.querySelectorAll('#history-tbody tr').forEach(tr => tr.classList.remove('row-selected'));
+}
+
+async function applyBulkStatus() {
+  // Send a single PATCH request to update all selected rows to the chosen status.
+  const ids    = getSelectedIds();
+  const status = document.getElementById('bulk-status-select').value;
+  if (!ids.length) { toast('No rows selected.', 'error'); return; }
+  if (!status)      { toast('Choose a status to apply.', 'error'); return; }
+  try {
+    const res = await api('/api/history/bulk-status', {
+      method: 'PATCH',
+      body: JSON.stringify({ report_ids: ids, status }),
+    });
+    if (!res.ok) throw new Error('Bulk update failed');
+    const d = await res.json();
+    toast(`${d.updated} record(s) marked ${status}`, 'success');
+    refreshStats();
+    loadHistory();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function deleteSelected() {
+  // Permanently delete all checked rows from the audit log after confirmation.
+  const ids = getSelectedIds();
+  if (!ids.length) { toast('No rows selected.', 'error'); return; }
+  if (!confirm(`Permanently delete ${ids.length} record(s)? This cannot be undone.`)) return;
+  let deleted = 0;
+  for (const id of ids) {
+    try {
+      const res = await api(`/api/history/${id}`, { method: 'DELETE' });
+      if (res.ok) deleted++;
+    } catch (e) {}
+  }
+  toast(`${deleted} record(s) deleted.`, deleted > 0 ? 'success' : 'error');
+  refreshStats();
+  loadHistory();
+}
+
+async function deleteSingleRow(reportId) {
+  // Permanently delete a single audit record by its report ID after confirmation.
+  if (!confirm('Permanently delete this record? This cannot be undone.')) return;
+  try {
+    const res = await api(`/api/history/${reportId}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Delete failed');
+    toast('Record deleted.', 'success');
+    refreshStats();
+    loadHistory();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function clearAllOpenCases() {
+  // Mark every open and investigating case as cleared via /api/history/clear-all.
+  if (!confirm('Mark all open and investigating cases as cleared?')) return;
+  try {
+    const res = await api('/api/history/clear-all', { method: 'POST' });
+    if (!res.ok) throw new Error('Failed to clear cases');
+    const d = await res.json();
+    toast(`${d.cleared} case(s) marked cleared.`, 'success');
+    refreshStats();
+    loadHistory();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+function resetBatchForm() {
+  document.getElementById('batch-file').value = '';
+  document.getElementById('batch-results').style.display = 'none';
+  document.getElementById('batch-loading').style.display = 'none';
+  toast('Batch form reset.', 'success', 1800);
+}
+
+// ============================================================
+// MODEL COMPARISON
+// ============================================================
+let comparisonData = null;
+
+async function loadModelComparison() {
+  try {
+    const res = await api('/api/model-comparison');
+    if (!res.ok) throw new Error('not available');
+    const data = await res.json();
+    comparisonData = data;
+    renderComparison(data);
+    setActiveModel(selectedModel);
+  } catch (e) {
+    document.getElementById('compare-loading').innerHTML =
+      '<span style="color:var(--muted);font-size:12px;font-family:var(--font-mono)">Run train_model.py to generate comparison data.</span>';
+  }
+}
+
+function renderConfusionMatrix(modelKey) {
+  // Populate the 2x2 matrix with TP/TN/FP/FN for either RF or LR.
+  if (!comparisonData) return;
+  const m = comparisonData[modelKey];
+  if (!m) return;
+  const fmt = n => (n ?? 0).toLocaleString();
+  document.getElementById('cm-tp').textContent = fmt(m.tp);
+  document.getElementById('cm-tn').textContent = fmt(m.tn);
+  document.getElementById('cm-fp').textContent = fmt(m.fp);
+  document.getElementById('cm-fn').textContent = fmt(m.fn);
+  document.getElementById('cm-model-name').textContent =
+    modelKey === 'random_forest' ? 'Random Forest' : 'Logistic Regression';
+
+  // Highlight the active CM toggle button.
+  document.getElementById('cm-btn-rf').classList.toggle('active', modelKey === 'random_forest');
+  document.getElementById('cm-btn-lr').classList.toggle('active', modelKey === 'logistic_regression');
+
+  // Re-render metrics table rows with the active model's column highlighted.
+  renderMetricRows(modelKey);
+
+  // Update model cards: selected card → green/active; other card → dimmed.
+  const cardRF  = document.getElementById('model-card-rf');
+  const cardLR  = document.getElementById('model-card-lr');
+  const badgeRF = document.getElementById('model-badge-rf');
+  const badgeLR = document.getElementById('model-badge-lr');
+  if (modelKey === 'random_forest') {
+    if (cardRF) { cardRF.classList.add('selected');    cardRF.classList.remove('dimmed'); }
+    if (cardLR) { cardLR.classList.add('dimmed');      cardLR.classList.remove('selected'); }
+    if (badgeRF) { badgeRF.className = 'tag normal';  badgeRF.textContent = 'SELECTED'; badgeRF.removeAttribute('style'); }
+    if (badgeLR) { badgeLR.className = 'tag';         badgeLR.textContent = 'BASELINE';
+      badgeLR.style.cssText = 'background:rgba(59,158,255,0.12);color:var(--blue);border:1px solid rgba(59,158,255,0.3)'; }
+  } else {
+    if (cardLR) { cardLR.classList.add('selected');    cardLR.classList.remove('dimmed'); }
+    if (cardRF) { cardRF.classList.add('dimmed');      cardRF.classList.remove('selected'); }
+    if (badgeLR) { badgeLR.className = 'tag normal';  badgeLR.textContent = 'SELECTED'; badgeLR.removeAttribute('style'); }
+    if (badgeRF) { badgeRF.className = 'tag';         badgeRF.textContent = 'COMPARISON';
+      badgeRF.style.cssText = 'background:rgba(148,163,184,0.1);color:var(--text2);border:1px solid var(--border)'; }
+  }
+
+  // Friendly summary so a non-technical reader understands the trade-offs.
+  const tot = (m.tp || 0) + (m.tn || 0) + (m.fp || 0) + (m.fn || 0);
+  const missRate = tot ? ((m.fn || 0) / ((m.fn || 0) + (m.tp || 0)) * 100).toFixed(1) : '0';
+  const falseAlarmRate = tot ? ((m.fp || 0) / ((m.fp || 0) + (m.tn || 0)) * 100).toFixed(1) : '0';
+  document.getElementById('cm-summary').textContent =
+    `Out of ${tot.toLocaleString()} test records, the model correctly caught ${fmt(m.tp)} threats and cleared ${fmt(m.tn)} legitimate users. ` +
+    `It missed ${fmt(m.fn)} actual threats (${missRate}% miss rate) and raised ${fmt(m.fp)} false alarms (${falseAlarmRate}% false-alarm rate). ` +
+    `In security, miss rate matters most: a missed insider can do real damage.`;
+}
+
+function renderMetricRows(activeKey) {
+  if (!comparisonData) return;
+  const rf = comparisonData.random_forest;
+  const lr = comparisonData.logistic_regression;
+  if (!rf || !lr) return;
+  const rfActive = activeKey === 'random_forest';
+  const metrics = [
+    { key: 'accuracy',  label: 'Accuracy'  },
+    { key: 'precision', label: 'Precision' },
+    { key: 'recall',    label: 'Recall'    },
+    { key: 'f1',        label: 'F1-Score'  },
+  ];
+  const tbody = document.getElementById('compare-body');
+  if (!tbody) return;
+  tbody.innerHTML = metrics.map(m => {
+    const rfv = rf[m.key] || 0, lrv = lr[m.key] || 0;
+    return `<tr>
+      <td style="color:var(--bright);font-weight:600">${m.label}</td>
+      <td class="${rfActive ? 'winner' : 'loser'}">
+        <div class="metric-bar-inline" style="width:${(rfv*80).toFixed(0)}px;background:${rfActive?'var(--green)':'var(--muted)'}"></div>
+        ${(rfv*100).toFixed(2)}%
+      </td>
+      <td class="${!rfActive ? 'winner' : 'loser'}">
+        <div class="metric-bar-inline" style="width:${(lrv*80).toFixed(0)}px;background:${!rfActive?'var(--green)':'var(--muted)'}"></div>
+        ${(lrv*100).toFixed(2)}%
+      </td>
+      <td>${rfActive
+        ? '<span class="tag normal">RF</span>'
+        : '<span class="tag" style="background:rgba(59,158,255,0.12);color:var(--blue);border:1px solid rgba(59,158,255,0.3)">LR</span>'}</td>
+    </tr>`;
+  }).join('');
+  tbody.innerHTML += `
+    <tr><td style="color:var(--bright);font-weight:600">True Positives</td>
+        <td class="${rfActive?'winner':''}">${rf.tp ?? '-'}</td>
+        <td class="${!rfActive?'winner':''}">${lr.tp ?? '-'}</td><td>-</td></tr>
+    <tr><td style="color:var(--bright);font-weight:600">False Negatives</td>
+        <td class="${rfActive?'winner':''}">${rf.fn ?? '-'}</td>
+        <td class="${!rfActive?'winner':''}">${lr.fn ?? '-'}</td><td>-</td></tr>`;
+}
+
+function renderComparison(data) {
+  const rf = data.random_forest;
+  const lr = data.logistic_regression;
+
+  renderMetricRows('random_forest');
+
+  document.getElementById('compare-loading').style.display = 'none';
+  document.getElementById('compare-table').style.display   = 'table';
+
+  const rfRec = ((rf.recall||0)*100).toFixed(1);
+  const lrRec = ((lr.recall||0)*100).toFixed(1);
+  const diff  = ((rf.recall||0)-(lr.recall||0))*100;
+  document.getElementById('compare-text').textContent =
+    `Random Forest was selected as the primary model. Across all key metrics, RF outperforms ` +
+    `Logistic Regression. Most importantly, RF reaches ${rfRec}% Recall versus LR's ${lrRec}%, a ` +
+    `${diff.toFixed(1)} percentage point improvement. In a security context, Recall is paramount: a false ` +
+    `negative means a real threat goes undetected. RF's ensemble of 200 decision trees captures non linear ` +
+    `behavioural patterns that LR's linear boundary cannot represent, justifying the additional complexity.`;
+  document.getElementById('compare-conclusion').style.display = 'block';
+}
+
+// ============================================================
+// SYSTEM HEARTBEAT
+// ============================================================
+let systemOnline = true;
+
+async function checkSystemHealth() {
+  // Poll the server every 30s; flip the SYSTEM ACTIVE badge to red OFFLINE on failure.
+  if (!authToken) return;
+  const badge = document.getElementById('system-status');
+  const ppServer = document.getElementById('pp-server');
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 4000);
+    const res = await fetch('/api/auth/me', {
+      headers: { 'Authorization': 'Bearer ' + authToken },
+      signal: ctrl.signal,
+    });
+    clearTimeout(t);
+    if (res.ok) {
+      systemOnline = true;
+      badge.classList.remove('offline');
+      badge.textContent = 'SYSTEM ACTIVE';
+      if (ppServer) { ppServer.textContent = 'Online'; ppServer.style.color = 'var(--green)'; }
+    } else if (res.status === 401) {
+      // Token invalid: sign out path handled elsewhere.
+      systemOnline = true;
+      badge.classList.remove('offline');
+      badge.textContent = 'SYSTEM ACTIVE';
+    } else {
+      throw new Error('non-ok');
+    }
+  } catch (e) {
+    systemOnline = false;
+    badge.classList.add('offline');
+    badge.textContent = 'SYSTEM OFFLINE';
+    if (ppServer) { ppServer.textContent = 'Offline'; ppServer.style.color = 'var(--red)'; }
+  }
+}
+
+// ============================================================
+// PROFILE POPOVER
+// ============================================================
+function toggleProfilePop(e) {
+  if (e) e.stopPropagation();
+  const pop = document.getElementById('profile-pop');
+  if (!pop) return;
+  // Refresh values each time it opens.
+  if (currentUser) {
+    document.getElementById('pp-username').textContent = currentUser.username || '-';
+    document.getElementById('pp-role').textContent = currentUser.role || 'analyst';
+  }
+  document.getElementById('pp-session').textContent = authToken ? 'Active' : 'Expired';
+  pop.classList.toggle('open');
+}
+
+// ============================================================
+// RECENT PREDICTIONS (loaded from audit log)
+// ============================================================
+async function loadRecentFromHistory() {
+  // Seed the dashboard preview with the latest entries from the audit log.
+  try {
+    const res = await api('/api/history?');
+    if (!res.ok) return;
+    const data = await res.json();
+    const rows = (data.rows || []).slice(0, 8);
+    recentPredictions = rows.map(r => ({
+      dept:       (r.inputs && r.inputs.employee_department) || '-',
+      position:   (r.inputs && r.inputs.employee_position)   || '-',
+      label:      r.label,
+      confidence: r.confidence || 0,
+      riskLabel:  r.risk_label,
+      ts:         r.timestamp,
+    }));
+    const tbody = document.getElementById('recent-tbody');
+    if (!tbody) return;
+    if (!recentPredictions.length) return;
+    tbody.innerHTML = recentPredictions.map(p => {
+      const isMal = p.label === 'MALICIOUS';
+      return `<tr>
+        <td>${p.dept || '-'}</td>
+        <td>${p.position || '-'}</td>
+        <td><span class="tag ${isMal ? 'malicious' : 'normal'}">${p.label}</span></td>
+        <td style="font-family:var(--font-mono)">${((p.confidence||0)*100).toFixed(1)}%</td>
+      </tr>`;
+    }).join('');
+  } catch (e) {}
+}
+
+// ============================================================
+// NOTIFICATIONS
+// ============================================================
+// Persist acknowledged open-case count in localStorage so dismissed
+// state survives logins. Dot/badge only reappear when new cases arrive.
+const NOTIF_ACK_KEY   = 'securelens_notif_ack';
+const HISTORY_SEEN_KEY = 'securelens_history_seen';
+
+function _ackedCount()      { return parseInt(localStorage.getItem(NOTIF_ACK_KEY)   || '0'); }
+function _historySeen()     { return parseInt(localStorage.getItem(HISTORY_SEEN_KEY) || '0'); }
+function _setAcked(n)       { localStorage.setItem(NOTIF_ACK_KEY,   n); }
+function _setHistorySeen(n) { localStorage.setItem(HISTORY_SEEN_KEY, n); }
+
+function updateNotifDot(openCaseCount) {
+  const dot = document.getElementById('notif-dot');
+  if (!dot) return;
+  // Clamp ack down if open cases decreased (e.g. cases were cleared/deleted).
+  if (openCaseCount < _ackedCount()) _setAcked(openCaseCount);
+  // Show red dot only when count exceeds what the user last acknowledged.
+  if (openCaseCount > _ackedCount()) {
+    dot.classList.add('active');
+  } else {
+    dot.classList.remove('active');
+  }
+  renderNotifList(openCaseCount);
+}
+
+function renderNotifList(openCaseCount) {
+  const list = document.getElementById('notif-list');
+  if (!list) return;
+  const newCount = openCaseCount - _ackedCount();
+  if (newCount <= 0) {
+    list.innerHTML = '<div class="notif-empty">No unread notifications<br><span style="font-size:10px;opacity:0.6">All threat cases are up to date.</span></div>';
+    return;
+  }
+  list.innerHTML = `
+    <div class="notif-item">
+      <div class="notif-icon">⚠️</div>
+      <div class="notif-body">
+        <div class="notif-msg">${newCount} new threat case${newCount > 1 ? 's' : ''} require${newCount === 1 ? 's' : ''} attention.</div>
+        <div class="notif-time">${openCaseCount} total open · Click to review in Audit History</div>
+      </div>
+    </div>`;
+  list.querySelector('.notif-item').addEventListener('click', () => {
+    document.getElementById('notif-panel').classList.remove('open');
+    clearNotifications();
+    navigateTab('tab-history');
+  });
+}
+
+function clearNotifications() {
+  // Mark all current cases acknowledged and dismiss the history badge too.
+  _setAcked(openCases);
+  _setHistorySeen(openCases);
+  document.getElementById('notif-dot').classList.remove('active');
+  renderNotifList(openCases);
+  dismissHistoryBadge();
+}
+
+// ============================================================
+// SEARCH
+// ============================================================
+let searchCache = [];
+
+function openSearch() {
+  const overlay = document.getElementById('search-overlay');
+  overlay.classList.add('open');
+  setTimeout(() => document.getElementById('search-input').focus(), 80);
+  if (window.lucide) lucide.createIcons();
+}
+
+function closeSearch() {
+  const overlay = document.getElementById('search-overlay');
+  overlay.classList.remove('open');
+  document.getElementById('search-input').value = '';
+  document.getElementById('search-results').innerHTML =
+    '<div class="search-hint">Start typing to search across all audit log entries.</div>';
+}
+
+function debounce(fn, ms) {
+  let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+
+async function runSearch() {
+  const q = document.getElementById('search-input').value.trim().toLowerCase();
+  const container = document.getElementById('search-results');
+  if (!q) {
+    container.innerHTML = '<div class="search-hint">Start typing to search across all audit log entries.</div>';
+    return;
+  }
+  try {
+    if (!searchCache.length) {
+      const res = await api('/api/history');
+      if (res.ok) { const d = await res.json(); searchCache = d.rows || []; }
+    }
+    const hits = searchCache.filter(r =>
+      (r.username||'').toLowerCase().includes(q) ||
+      (r.label||'').toLowerCase().includes(q) ||
+      (r.risk_label||'').toLowerCase().includes(q) ||
+      (r.source||'').toLowerCase().includes(q) ||
+      (r.status||'').toLowerCase().includes(q) ||
+      ((r.inputs && r.inputs.employee_department)||'').toLowerCase().includes(q) ||
+      ((r.inputs && r.inputs.employee_position)||'').toLowerCase().includes(q)
+    );
+    if (!hits.length) {
+      container.innerHTML = `<div class="search-hint">No results for "<b>${q}</b>".</div>`;
+      return;
+    }
+    container.innerHTML = hits.slice(0, 20).map(r => {
+      const dept = (r.inputs && r.inputs.employee_department) || '-';
+      const pos  = (r.inputs && r.inputs.employee_position)   || '-';
+      const color = r.label === 'MALICIOUS' ? 'var(--red)' : 'var(--green)';
+      return `<div class="search-result-item" onclick="openSearchResult('${r.report_id}')">
+        <span style="width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0;display:inline-block"></span>
+        <span class="search-result-label">${dept} · ${pos}</span>
+        <span class="search-result-meta">${r.label} · ${r.status} · ${r.username||'-'}</span>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    container.innerHTML = '<div class="search-hint" style="color:var(--red)">Search error. Ensure you are logged in.</div>';
+  }
+}
+
+function openSearchResult(reportId) {
+  closeSearch();
+  searchCache = [];
+  navigateTab('tab-history');
+}
+
+// ============================================================
+// EVENT WIRING
+// ============================================================
+function wireEvents() {
+  // Sidebar nav clicks.
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.addEventListener('click', () => switchTab(item.dataset.tab, item));
+  });
+  // Topbar tab clicks.
+  document.querySelectorAll('.topbar-tab').forEach(item => {
+    item.addEventListener('click', () => switchTopTab(item.dataset.toptab));
+  });
+  // Click any clickable panel to open the expanded view.
+  document.querySelectorAll('[data-expand]').forEach(el => {
+    el.addEventListener('click', () => openExpandedPanel(el.dataset.expand));
+  });
+  // Login form.
+  document.getElementById('login-form').addEventListener('submit', handleLogin);
+  // Sign out.
+  document.getElementById('signout-btn').addEventListener('click', signOut);
+  // Drag and drop CSV.
+  const drop = document.getElementById('upload-zone');
+  if (drop) {
+    ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('dragover'); }));
+    ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('dragover'); }));
+    drop.addEventListener('drop', e => {
+      const f = e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f) {
+        const input = document.getElementById('batch-file');
+        const dt = new DataTransfer();
+        dt.items.add(f);
+        input.files = dt.files;
+        handleBatchUpload(input);
+      }
+    });
+  }
+  // Escape key closes the expanded modal and search overlay.
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { closeExpandedPanel(); closeSearch(); }
+  });
+
+  // Notification button toggle: clicking the bell only OPENS the panel.
+  // Notifications are cleared only when the user clicks "Mark all read",
+  // clicks a notification item, or navigates to the History tab.
+  const notifBtn = document.getElementById('notif-btn');
+  const notifPanel = document.getElementById('notif-panel');
+  notifBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    // Refresh list contents in case openCases / ackedCount changed in the background.
+    renderNotifList(openCases);
+    notifPanel.classList.toggle('open');
+  });
+  document.getElementById('notif-clear-btn').addEventListener('click', e => {
+    e.stopPropagation();
+    clearNotifications();
+    notifPanel.classList.remove('open');
+  });
+  document.addEventListener('click', e => {
+    if (!notifBtn.contains(e.target)) notifPanel.classList.remove('open');
+  });
+
+  // Search button.
+  document.getElementById('search-btn').addEventListener('click', openSearch);
+  document.getElementById('search-close-btn').addEventListener('click', closeSearch);
+  document.getElementById('search-overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('search-overlay')) closeSearch();
+  });
+  document.getElementById('search-input').addEventListener('input', debounce(runSearch, 250));
+
+  // Profile popover trigger.
+  const profileTrigger = document.getElementById('user-info-trigger');
+  const profilePop = document.getElementById('profile-pop');
+  if (profileTrigger) profileTrigger.addEventListener('click', toggleProfilePop);
+  document.addEventListener('click', e => {
+    if (profilePop && !profileTrigger.contains(e.target) && !profilePop.contains(e.target)) {
+      profilePop.classList.remove('open');
+    }
+  });
+}
+
+// ============================================================
+// BOOT
+// ============================================================
+function boot() {
+  if (window.lucide) lucide.createIcons();
+  startTunnel();
+  bindThreshold();
+  wireEvents();
+  runIntroCounters();
+  // Hold the splash for a moment so the scan animation reads, then fade it out.
+  setTimeout(() => {
+    document.getElementById('splash').classList.add('hidden');
+    tryRestoreSession();
+  }, 2400);
+}
+
+document.addEventListener('DOMContentLoaded', boot);
+</script>
+</body>
+</html>

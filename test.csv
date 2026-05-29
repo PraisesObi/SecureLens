@@ -1,0 +1,11 @@
+employee_department,employee_campus,employee_position,employee_seniority_years,is_contractor,employee_classification,has_foreign_citizenship,has_criminal_record,has_medical_history,employee_origin_country,total_printed_pages,num_printed_pages_off_hours,total_files_burned,burned_from_other,is_abroad,trip_day_number,hostility_country_level,num_entries,num_unique_campus,late_exit_flag,entry_during_weekend
+Engineering Department,Campus A,Software Engineer,5,0,1,0,0,0,South Africa,12,0,0,0,0,0.0,0,2,1,0,0
+Finance Department,Campus B,Financial Analyst,3,0,2,0,0,0,South Africa,0,0,0,0,0,0.0,0,1,1,0,0
+HR Department,Campus A,HR Manager,8,0,1,0,0,0,United Kingdom,5,0,1,0,0,0.0,0,3,2,0,0
+Engineering Department,Campus C,Design Engineer,22,0,2,0,0,0,Georgia,0,0,4,0,0,0.0,0,1,1,0,1
+IT Department,Campus A,System Administrator,2,1,3,1,0,0,Russia,180,95,12,1,1,14.0,3,8,4,1,1
+Engineering Department,Campus B,Software Engineer,10,0,1,0,0,0,South Africa,20,2,0,0,0,0.0,0,3,2,0,0
+Security Department,Campus A,Security Officer,15,0,2,0,0,0,South Africa,0,0,0,0,0,0.0,0,2,1,0,0
+Finance Department,Campus C,Accountant,4,0,2,1,0,0,China,250,180,8,1,1,21.0,2,10,5,1,1
+IT Department,Campus B,Network Engineer,7,0,1,0,0,0,India,30,0,0,0,0,0.0,0,2,1,0,0
+Operations Department,Campus A,Operations Manager,12,0,1,0,0,0,South Africa,8,0,2,0,0,0.0,0,2,1,0,0
